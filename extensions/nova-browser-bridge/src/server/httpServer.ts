@@ -22,7 +22,7 @@ export interface INovaBridgeServer {
 }
 
 /** Ports we try in order after the configured/default one is unavailable. */
-function candidatePorts(preferred: number): number[] {
+export function candidatePorts(preferred: number): number[] {
 	return [preferred, 0 /* let the OS pick a free ephemeral port */];
 }
 
@@ -57,7 +57,7 @@ export async function startBridgeServer(novaBrowser: NovaBrowser, devServerManag
 	};
 }
 
-function listen(server: http.Server, ports: number[]): Promise<number> {
+export function listen(server: http.Server, ports: number[]): Promise<number> {
 	return new Promise((resolve, reject) => {
 		let index = 0;
 		const tryNext = () => {

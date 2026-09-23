@@ -10,6 +10,7 @@
 	"command.devServer.restart": "Nova: Restart Dev Server",
 	"config.title": "Nova Browser Bridge",
 	"config.port": "Preferred TCP port for the local Nova Browser Bridge server (MCP + REST). If it is busy, a free port is chosen automatically.",
+	"config.cdpPort": "Preferred TCP port for the Chrome DevTools Protocol endpoint (for chromium.connectOverCDP or @playwright/mcp --cdp-endpoint). If it is busy, a free port is chosen automatically. Connecting requires the bridge token and the same confirmation as nova.browserBridge.allowEvaluate.",
 	"config.allowedHosts": "Hosts that `open`/`navigate` are allowed to reach by default. A URL whose host is not in this list is refused unless `#nova.browserBridge.allowExternalHosts#` is enabled.",
 	"config.allowExternalHosts": "Allows agents to open/navigate to any host, not only those listed in nova.browserBridge.allowedHosts. Enable with care.",
 	"config.allowEvaluate": "Allows agents to run arbitrary Playwright code (run_playwright / the CLI 'run' command) against Integrated Browser pages. The user is asked to confirm on the first attempt.",

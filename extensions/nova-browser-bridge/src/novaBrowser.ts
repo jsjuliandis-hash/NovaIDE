@@ -160,6 +160,18 @@ export class NovaBrowser implements vscode.Disposable {
 		await settle(page);
 	}
 
+	/**
+	 * A fresh browser-level CDP session over one page's view (the given page, else
+	 * the active one), for external CDP clients such as `chromium.connectOverCDP`.
+	 */
+	async startExternalCDPSession(pageId?: string): Promise<vscode.BrowserCDPSession> {
+		const tab = pageId ? this._require(pageId).tab : (vscode.window.activeBrowserTab ?? [...this._pagesById.values()][0]?.tab);
+		if (!tab) {
+			throw new Error('No Integrated Browser page is open. Open one first (browser_open / nova-browser open).');
+		}
+		return tab.startCDPSession();
+	}
+
 	/** Attaches Playwright now, so reloads/HMR updates are recorded before anyone asks for them. */
 	async attach(pageId: string): Promise<void> {
 		await this._connect(pageId);

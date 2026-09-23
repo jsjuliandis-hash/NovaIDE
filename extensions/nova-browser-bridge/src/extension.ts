@@ -11,6 +11,7 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { DevServerManager, type IDevServerStatus } from './devServer/devServerManager';
 import { NovaBrowser } from './novaBrowser';
+import { startCdpServer } from './server/cdpServer';
 import { startBridgeServer, type INovaBridgeServer } from './server/httpServer';
 import { generateToken, removeBridgeFile, writeBridgeFile } from './server/security';
 
@@ -41,13 +42,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const bridge = await startBridgeServer(novaBrowser, devServerManager, token, preferredPort, () => onAgentRequest.fire());
 	context.subscriptions.push({ dispose: () => void bridge.close() });
 
+	const preferredCdpPort = vscode.workspace.getConfiguration('nova.browserBridge').get<number>('cdpPort', 47801);
+	const cdp = await startCdpServer(novaBrowser, token, preferredCdpPort, () => onAgentRequest.fire());
+	context.subscriptions.push({ dispose: () => void cdp.close() });
+
 	const mcpUrl = `http://127.0.0.1:${bridge.port}/mcp`;
 	const restBaseUrl = `http://127.0.0.1:${bridge.port}/v1`;
 
-	await writeBridgeFile({ url: restBaseUrl, token, pid: process.pid });
+	await writeBridgeFile({ url: restBaseUrl, token, pid: process.pid, cdpUrl: cdp.endpointUrl });
 	context.subscriptions.push({ dispose: () => void removeBridgeFile() });
 
-	exposeToIntegratedTerminals(context, mcpUrl, restBaseUrl, token);
+	exposeToIntegratedTerminals(context, mcpUrl, restBaseUrl, token, cdp.endpointUrl);
 
 	const statusBarItem = createStatusBarItem(bridge, onAgentRequest.event);
 	context.subscriptions.push(statusBarItem);
@@ -80,12 +85,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
  * available in every integrated terminal opened from now on. VS Code does not
  * retroactively apply these to already-open terminals.
  */
-function exposeToIntegratedTerminals(context: vscode.ExtensionContext, mcpUrl: string, restBaseUrl: string, token: string): void {
+function exposeToIntegratedTerminals(context: vscode.ExtensionContext, mcpUrl: string, restBaseUrl: string, token: string, cdpUrl: string): void {
 	const env = context.environmentVariableCollection;
 	env.clear();
 	env.replace('NOVA_BROWSER_URL', restBaseUrl);
 	env.replace('NOVA_BROWSER_MCP_URL', mcpUrl);
 	env.replace('NOVA_BROWSER_TOKEN', token);
+	env.replace('NOVA_BROWSER_CDP_URL', cdpUrl);
 	env.prepend('PATH', `${path.join(context.extensionUri.fsPath, 'bin')}${path.delimiter}`);
 }
 

@@ -24,6 +24,8 @@ export interface IBridgeFile {
 	url: string;
 	token: string;
 	pid: number;
+	/** Endpoint for `chromium.connectOverCDP(cdpUrl)`; carries the token in its path. */
+	cdpUrl?: string;
 }
 
 const BRIDGE_DIR = path.join(os.homedir(), '.nova-ide');
@@ -48,10 +50,23 @@ const allowedHostHeaders = new Set(['127.0.0.1', 'localhost', '[::1]']);
  * `false` when the request must stop here.
  */
 export function checkRequest(req: http.IncomingMessage, res: http.ServerResponse, token: string): boolean {
+	const rejection = validateRequest(req, token);
+	if (rejection) {
+		respond(res, rejection.status, rejection.message);
+		return false;
+	}
+	return true;
+}
+
+/**
+ * The rules behind {@link checkRequest}, without writing a response (WebSocket
+ * upgrades answer differently). `pathToken` lets clients that can't set headers,
+ * such as `--cdp-endpoint` style URLs, put the token in the URL instead.
+ */
+export function validateRequest(req: http.IncomingMessage, token: string, pathToken?: string): { status: number; message: string } | undefined {
 	const hostHeader = (req.headers.host ?? '').split(':')[0];
 	if (!allowedHostHeaders.has(hostHeader)) {
-		respond(res, 403, 'Forbidden: unexpected Host header');
-		return false;
+		return { status: 403, message: 'Forbidden: unexpected Host header' };
 	}
 
 	// A real browser tab always sends `Origin`; CLIs and MCP HTTP clients never
@@ -59,17 +74,24 @@ export function checkRequest(req: http.IncomingMessage, res: http.ServerResponse
 	// closes the classic "malicious page on localhost drives a local API"
 	// hole without needing to reason about which origins are "safe".
 	if (req.headers.origin !== undefined) {
-		respond(res, 403, 'Forbidden: browser-originated requests are not allowed');
-		return false;
+		return { status: 403, message: 'Forbidden: browser-originated requests are not allowed' };
 	}
 
-	const auth = req.headers.authorization;
-	if (auth !== `Bearer ${token}`) {
-		respond(res, 401, 'Unauthorized: missing or invalid bearer token');
-		return false;
+	const bearer = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice('Bearer '.length) : undefined;
+	if (!tokensMatch(bearer, token) && !tokensMatch(pathToken, token)) {
+		return { status: 401, message: 'Unauthorized: missing or invalid bearer token' };
 	}
 
-	return true;
+	return undefined;
+}
+
+function tokensMatch(candidate: string | undefined, token: string): boolean {
+	if (candidate === undefined) {
+		return false;
+	}
+	const a = Buffer.from(candidate);
+	const b = Buffer.from(token);
+	return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
 function respond(res: http.ServerResponse, status: number, message: string): void {
