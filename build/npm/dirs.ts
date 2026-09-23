@@ -41,6 +41,7 @@ export const dirs = [
 	'extensions/mermaid-markdown-features',
 	'extensions/microsoft-authentication',
 	'extensions/notebook-renderers',
+	'extensions/nova-browser-bridge', // NOVA
 	'extensions/npm',
 	'extensions/php-language-features',
 	'extensions/references-view',
