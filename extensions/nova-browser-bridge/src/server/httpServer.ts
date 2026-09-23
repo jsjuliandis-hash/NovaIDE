@@ -26,7 +26,7 @@ function candidatePorts(preferred: number): number[] {
 	return [preferred, 0 /* let the OS pick a free ephemeral port */];
 }
 
-export async function startBridgeServer(novaBrowser: NovaBrowser, devServerManager: DevServerManager, token: string, preferredPort: number): Promise<INovaBridgeServer> {
+export async function startBridgeServer(novaBrowser: NovaBrowser, devServerManager: DevServerManager, token: string, preferredPort: number, onAuthenticatedRequest: () => void): Promise<INovaBridgeServer> {
 	const mcpHandler = createMcpHandler(() => buildMcpServer(novaBrowser, devServerManager));
 	const mcpNodeHandler = toNodeHandler(mcpHandler);
 
@@ -34,6 +34,7 @@ export async function startBridgeServer(novaBrowser: NovaBrowser, devServerManag
 		if (!checkRequest(req, res, token)) {
 			return;
 		}
+		onAuthenticatedRequest();
 		const pathname = (req.url ?? '/').split('?')[0];
 		if (pathname === '/mcp') {
 			void mcpNodeHandler(req, res);

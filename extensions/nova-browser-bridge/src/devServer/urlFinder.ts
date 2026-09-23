@@ -20,7 +20,6 @@ const localPythonServerRegex = /HTTP\son\s(127\.0\.0\.1|0\.0\.0\.0)\sport\s(\d+)
 
 /** Strips ANSI/CSI/OSC terminal escape sequences before matching. */
 function stripAnsi(data: string): string {
-	// eslint-disable-next-line no-control-regex
 	return data.replace(/\x1b\][^\x07]*(\x07|\x1b\\)/g, '').replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, '');
 }
 

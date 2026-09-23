@@ -36,7 +36,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 	const token = generateToken();
 	const preferredPort = vscode.workspace.getConfiguration('nova.browserBridge').get<number>('port', 47800);
-	const bridge = await startBridgeServer(novaBrowser, devServerManager, token, preferredPort);
+	const onAgentRequest = new vscode.EventEmitter<void>();
+	context.subscriptions.push(onAgentRequest);
+	const bridge = await startBridgeServer(novaBrowser, devServerManager, token, preferredPort, () => onAgentRequest.fire());
 	context.subscriptions.push({ dispose: () => void bridge.close() });
 
 	const mcpUrl = `http://127.0.0.1:${bridge.port}/mcp`;
@@ -47,7 +49,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 	exposeToIntegratedTerminals(context, mcpUrl, restBaseUrl, token);
 
-	const statusBarItem = createStatusBarItem(bridge);
+	const statusBarItem = createStatusBarItem(bridge, onAgentRequest.event);
 	context.subscriptions.push(statusBarItem);
 
 	const devServerStatusBarItem = createDevServerStatusBarItem(devServerManager);
@@ -87,14 +89,30 @@ function exposeToIntegratedTerminals(context: vscode.ExtensionContext, mcpUrl: s
 	env.prepend('PATH', `${path.join(context.extensionUri.fsPath, 'bin')}${path.delimiter}`);
 }
 
-function createStatusBarItem(bridge: INovaBridgeServer): vscode.StatusBarItem {
+/** Idle: "Nova Bridge". For a few seconds after each agent request: a highlighted "agent is using the browser". */
+function createStatusBarItem(bridge: INovaBridgeServer, onAgentRequest: vscode.Event<void>): vscode.Disposable {
+	const ACTIVE_MS = 5_000;
 	const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 	item.name = 'Nova Browser Bridge';
-	item.text = '$(radio-tower) Nova Bridge';
-	item.tooltip = vscode.l10n.t('Nova Browser Bridge listening on 127.0.0.1:{0}. Click for options.', bridge.port);
 	item.command = 'novaBrowserBridge.showStatus';
+	let resetTimer: ReturnType<typeof setTimeout> | undefined;
+
+	const showIdle = () => {
+		item.text = '$(radio-tower) Nova Bridge';
+		item.tooltip = vscode.l10n.t('Nova Browser Bridge listening on 127.0.0.1:{0}. Click for options.', bridge.port);
+		item.backgroundColor = undefined;
+	};
+	const sub = onAgentRequest(() => {
+		item.text = `$(robot) ${vscode.l10n.t('Agent is using the browser')}`;
+		item.tooltip = vscode.l10n.t('An external agent is controlling the Integrated Browser through the Nova Browser Bridge. Click to stop the bridge or see options.');
+		item.backgroundColor = new vscode.ThemeColor('statusBarItem.warningBackground');
+		clearTimeout(resetTimer);
+		resetTimer = setTimeout(showIdle, ACTIVE_MS);
+	});
+
+	showIdle();
 	item.show();
-	return item;
+	return { dispose: () => { clearTimeout(resetTimer); sub.dispose(); item.dispose(); } };
 }
 
 function createDevServerStatusBarItem(devServerManager: DevServerManager): vscode.Disposable {

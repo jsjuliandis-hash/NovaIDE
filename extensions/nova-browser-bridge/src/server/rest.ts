@@ -60,6 +60,19 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
 		},
 	},
 	{
+		method: 'POST', pattern: /^\/v1\/pages\/([^/]+)\/wait-reload$/,
+		handler: async (nb, _dev, p, body) => {
+			const { timeoutMs, lookbackMs } = asRecord(body);
+			return {
+				status: 200,
+				json: await nb.waitForReload(p[1], {
+					timeoutMs: typeof timeoutMs === 'number' ? timeoutMs : undefined,
+					lookbackMs: typeof lookbackMs === 'number' ? lookbackMs : undefined,
+				}),
+			};
+		},
+	},
+	{
 		method: 'GET', pattern: /^\/v1\/pages\/([^/]+)\/console$/,
 		handler: async (nb, _dev, p, _body, query) => {
 			const sinceMs = query.get('sinceMs');

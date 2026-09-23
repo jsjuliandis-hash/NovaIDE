@@ -106,6 +106,29 @@ export function buildMcpServer(novaBrowser: NovaBrowser, devServerManager: DevSe
 	);
 
 	server.registerTool(
+		'browser_wait_for_reload',
+		{
+			description: 'Call right after editing source files: waits until the page picks up the change (HMR update or full reload from the dev server), then returns the updated snapshot and a screenshot. An update applied within the last lookbackMs (default 3000) also counts. reason is "timeout" if nothing happened.',
+			inputSchema: {
+				pageId: pageIdSchema,
+				timeoutMs: z.number().optional().describe('How long to wait for an update. Default 30000.'),
+				lookbackMs: z.number().optional().describe('Accept an update that already happened this many ms ago. Default 3000; use 0 to only wait for a new one.'),
+			},
+		},
+		async ({ pageId, timeoutMs, lookbackMs }) => {
+			const outcome = await novaBrowser.waitForReload(pageId, { timeoutMs, lookbackMs });
+			const png = await novaBrowser.screenshot(pageId);
+			const header = `Reload reason: ${outcome.reason}${outcome.detail ? ` (${outcome.detail})` : ''}`;
+			return {
+				content: [
+					{ type: 'text' as const, text: `${header}\n${outcome.summary}` },
+					{ type: 'image' as const, data: Buffer.from(png).toString('base64'), mimeType: 'image/png' },
+				],
+			};
+		},
+	);
+
+	server.registerTool(
 		'browser_console',
 		{
 			description: 'Get recent console messages and page errors captured since the page was connected to.',
@@ -132,7 +155,7 @@ export function buildMcpServer(novaBrowser: NovaBrowser, devServerManager: DevSe
 
 	server.registerTool(
 		'devserver_status',
-		{ description: "Get the workspace's detected dev server status: phase (idle/not-detected/starting/running/error/stopped), URL if running, and command/cwd.", inputSchema: {} },
+		{ description: 'Get the workspace\'s detected dev server status: phase (idle/not-detected/starting/running/error/stopped), URL if running, and command/cwd.', inputSchema: {} },
 		async () => textResult(JSON.stringify(devServerManager.status, null, 2)),
 	);
 

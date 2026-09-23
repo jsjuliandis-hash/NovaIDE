@@ -186,6 +186,18 @@ async function main() {
 			return;
 		}
 
+		case 'wait-reload': {
+			const { options } = parseArgs(rest);
+			const body = {};
+			if (options.timeout !== undefined) { body.timeoutMs = Number(options.timeout) * 1000; }
+			if (options.lookback !== undefined) { body.lookbackMs = Number(options.lookback) * 1000; }
+			const outcome = await request(conn, 'POST', `/pages/${encodeURIComponent(requirePageId(options, state))}/wait-reload`, body);
+			console.log(`Reload reason: ${outcome.reason}${outcome.detail ? ` (${outcome.detail})` : ''}`);
+			console.log(outcome.summary);
+			if (outcome.reason === 'timeout') { process.exitCode = 2; }
+			return;
+		}
+
 		case 'console': {
 			const { options } = parseArgs(rest);
 			const query = options.since ? `?sinceMs=${encodeURIComponent(options.since)}` : '';
@@ -236,6 +248,8 @@ Usage:
   nova-browser screenshot [--page <id>] [-o <file>] [--full-page]
   nova-browser click <target> [--page <id>]
   nova-browser type <target> <text> [--page <id>]
+  nova-browser wait-reload [--page <id>] [--timeout <s>] [--lookback <s>]
+                             after editing code: wait for HMR/reload, print the new snapshot
   nova-browser console [--page <id>] [--since <ms>]
   nova-browser run <file.js|-> [--page <id>]
   nova-browser dev status

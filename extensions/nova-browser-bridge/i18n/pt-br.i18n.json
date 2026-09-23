@@ -39,6 +39,8 @@
 			"Started, but no local URL was detected within {0}s. Check the \"{1}\" terminal.": "Iniciado, mas nenhuma URL local foi detectada em {0}s. Verifique o terminal \"{1}\".",
 			"Nova Browser Bridge token copied to the clipboard.": "Token da Nova Browser Bridge copiado para a área de transferência.",
 			"Nova Browser Bridge listening on 127.0.0.1:{0}. Click for options.": "Nova Browser Bridge escutando em 127.0.0.1:{0}. Clique para ver as opções.",
+			"Agent is using the browser": "Agente usando o navegador",
+			"An external agent is controlling the Integrated Browser through the Nova Browser Bridge. Click to stop the bridge or see options.": "Um agente externo está controlando o navegador integrado pela Nova Browser Bridge. Clique para parar a ponte ou ver as opções.",
 			"Dev: starting…": "Dev: iniciando…",
 			"{0} — click for options": "{0} — clique para ver as opções",
 			"Dev: error": "Dev: erro",

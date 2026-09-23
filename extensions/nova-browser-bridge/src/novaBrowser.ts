@@ -16,7 +16,6 @@
 import * as vscode from 'vscode';
 // playwright-core has no bundled browsers; we only ever attach to an existing
 // Chromium view via connectOverCDP, never launch one.
-// eslint-disable-next-line import/no-extraneous-dependencies
 import type { Browser, ConnectOverCDPTransport, Page } from 'playwright-core';
 
 /** Result shape mirroring the internal IInvokeFunctionResult, redefined locally since
@@ -47,7 +46,25 @@ export interface INovaConsoleEntry {
 	ts: number;
 }
 
+export interface INovaPageUpdate {
+	reason: 'load' | 'hmr';
+	/** The console line that signalled an HMR update, or the URL that finished loading. */
+	detail: string;
+	ts: number;
+}
+
+export interface INovaReloadResult {
+	reason: INovaPageUpdate['reason'] | 'timeout';
+	detail?: string;
+	summary: string;
+}
+
 const CONSOLE_BUFFER_LIMIT = 500;
+const UPDATE_HISTORY_LIMIT = 20;
+/** How long to wait for network activity to settle after an action before snapshotting. */
+const SETTLE_TIMEOUT_MS = 2_000;
+/** Console lines printed by common dev servers' HMR clients once an update has been applied. */
+const HMR_APPLIED_PATTERN = /\[vite\] hot updated|\[HMR\] (Updated modules|App is up to date)|\[Fast Refresh\] done|\[webpack-dev-server\] .*(Hot Module Replacement|App updated)/i;
 
 /** Per-page state kept alive for as long as the underlying BrowserTab exists. */
 interface IPageEntry {
@@ -57,6 +74,9 @@ interface IPageEntry {
 	connection?: Promise<{ browser: Browser; page: Page }>;
 	cdpSession?: vscode.BrowserCDPSession;
 	consoleLog: INovaConsoleEntry[];
+	/** Full loads and HMR updates seen since Playwright attached, newest last. */
+	updates: INovaPageUpdate[];
+	readonly onDidUpdate: vscode.EventEmitter<INovaPageUpdate>;
 }
 
 /**
@@ -88,6 +108,7 @@ export class NovaBrowser implements vscode.Disposable {
 		}
 		for (const entry of this._pagesById.values()) {
 			entry.cdpSession?.close();
+			entry.onDidUpdate.dispose();
 		}
 		this._pagesById.clear();
 	}
@@ -130,11 +151,45 @@ export class NovaBrowser implements vscode.Disposable {
 		assertHostAllowed(url);
 		const { page } = await this._connect(pageId);
 		await page.goto(url, { waitUntil: 'domcontentloaded' });
+		await settle(page);
 	}
 
 	async reload(pageId: string): Promise<void> {
 		const { page } = await this._connect(pageId);
 		await page.reload({ waitUntil: 'domcontentloaded' });
+		await settle(page);
+	}
+
+	/** Attaches Playwright now, so reloads/HMR updates are recorded before anyone asks for them. */
+	async attach(pageId: string): Promise<void> {
+		await this._connect(pageId);
+	}
+
+	/**
+	 * Resolves once the page has picked up a code change: a full load or an HMR
+	 * update. An update seen within the last `lookbackMs` also counts, since the
+	 * dev server often applies it before the caller gets around to asking.
+	 */
+	async waitForReload(pageId: string, opts?: { timeoutMs?: number; lookbackMs?: number }): Promise<INovaReloadResult> {
+		const entry = this._require(pageId);
+		const { page } = await this._connect(pageId);
+		const since = Date.now() - (opts?.lookbackMs ?? 3_000);
+		let update: INovaPageUpdate | undefined = [...entry.updates].reverse().find(u => u.ts >= since);
+		if (!update) {
+			update = await new Promise<INovaPageUpdate | undefined>(resolve => {
+				const timer = setTimeout(() => {
+					sub.dispose();
+					resolve(undefined);
+				}, opts?.timeoutMs ?? 30_000);
+				const sub = entry.onDidUpdate.event(u => {
+					clearTimeout(timer);
+					sub.dispose();
+					resolve(u);
+				});
+			});
+		}
+		await settle(page);
+		return { reason: update?.reason ?? 'timeout', detail: update?.detail, summary: await this.snapshot(pageId) };
 	}
 
 	// #endregion
@@ -165,19 +220,20 @@ export class NovaBrowser implements vscode.Disposable {
 	async click(pageId: string, target: string): Promise<string> {
 		const { page } = await this._connect(pageId);
 		await this._locator(page, target).click();
+		await settle(page);
 		return this.snapshot(pageId);
 	}
 
 	async type(pageId: string, target: string, text: string): Promise<string> {
 		const { page } = await this._connect(pageId);
 		await this._locator(page, target).fill(text);
+		await settle(page);
 		return this.snapshot(pageId);
 	}
 
 	async runPlaywright(pageId: string, code: string): Promise<INovaRunResult> {
 		const { page } = await this._connect(pageId);
 		try {
-			// eslint-disable-next-line no-new-func
 			const fn = new Function(`return (${code})`)() as (page: Page) => unknown;
 			const result = await fn(page);
 			return { result, summary: await this.snapshot(pageId) };
@@ -206,7 +262,7 @@ export class NovaBrowser implements vscode.Disposable {
 		if (existing) {
 			return existing;
 		}
-		const entry: IPageEntry = { id: `page-${this._nextId++}`, tab, consoleLog: [] };
+		const entry: IPageEntry = { id: `page-${this._nextId++}`, tab, consoleLog: [], updates: [], onDidUpdate: new vscode.EventEmitter<INovaPageUpdate>() };
 		this._pagesByTab.set(tab, entry);
 		this._pagesById.set(entry.id, entry);
 		return entry;
@@ -218,6 +274,7 @@ export class NovaBrowser implements vscode.Disposable {
 			return;
 		}
 		entry.cdpSession?.close();
+		entry.onDidUpdate.dispose();
 		this._pagesById.delete(entry.id);
 		this._pagesByTab.delete(tab);
 	}
@@ -274,8 +331,15 @@ export class NovaBrowser implements vscode.Disposable {
 		const browser = await playwright.chromium.connectOverCDP(transport);
 		const page = await this._waitForPage(browser);
 
-		page.on('console', message => this._recordConsole(entry, message.type(), message.text()));
+		page.on('console', message => {
+			const text = message.text();
+			this._recordConsole(entry, message.type(), text);
+			if (HMR_APPLIED_PATTERN.test(text)) {
+				this._recordUpdate(entry, 'hmr', text);
+			}
+		});
 		page.on('pageerror', error => this._recordConsole(entry, 'error', error.stack ?? error.message));
+		page.on('load', () => this._recordUpdate(entry, 'load', page.url()));
 
 		browser.on('disconnected', () => {
 			entry.connection = undefined;
@@ -320,6 +384,15 @@ export class NovaBrowser implements vscode.Disposable {
 		}
 	}
 
+	private _recordUpdate(entry: IPageEntry, reason: INovaPageUpdate['reason'], detail: string): void {
+		const update: INovaPageUpdate = { reason, detail, ts: Date.now() };
+		entry.updates.push(update);
+		if (entry.updates.length > UPDATE_HISTORY_LIMIT) {
+			entry.updates.splice(0, entry.updates.length - UPDATE_HISTORY_LIMIT);
+		}
+		entry.onDidUpdate.fire(update);
+	}
+
 	/** Resolves a click/type target: `aria-ref=...` refs from a snapshot, or a raw Playwright selector. */
 	private _locator(page: Page, target: string) {
 		return page.locator(target);
@@ -356,6 +429,16 @@ function assertHostAllowed(url: string): void {
 			`Enable nova.browserBridge.allowExternalHosts to allow any host.`
 		);
 	}
+}
+
+/**
+ * Gives in-flight requests (and, after HMR, the framework's re-render) a moment
+ * to finish so the snapshot reflects the result of the action. A page that never
+ * goes idle (polling, long-lived streams) just costs the timeout.
+ */
+async function settle(page: Page): Promise<void> {
+	await page.waitForLoadState('networkidle', { timeout: SETTLE_TIMEOUT_MS }).catch(() => { });
+	await new Promise(resolve => setTimeout(resolve, 100));
 }
 
 function sameHost(a: string, b: string): boolean {

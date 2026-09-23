@@ -214,7 +214,8 @@ export class DevServerManager implements vscode.Disposable {
 	private async _onUrlFound(url: string): Promise<void> {
 		this._setStatus({ ...this._status, phase: 'running', url });
 		try {
-			await this.novaBrowser.open(url, { reuse: true });
+			const pageId = await this.novaBrowser.open(url, { reuse: true });
+			void this.novaBrowser.attach(pageId).catch(() => { /* automation calls retry the connection */ });
 		} catch (error) {
 			this._setStatus({ ...this._status, phase: 'error', message: error instanceof Error ? error.message : String(error) });
 		}
