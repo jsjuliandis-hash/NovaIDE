@@ -922,7 +922,9 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 		},
 		'workbench.browser.openLocalhostLinks': {
 			type: 'boolean',
-			default: false,
+			// NOVA: default true (upstream is false) so the DevServerManager's
+			// detected localhost URLs always open in the Integrated Browser.
+			default: true,
 			experiment: { mode: 'startup' },
 			markdownDescription: localize(
 				{ comment: ['This is the description for a setting.'], key: 'browser.openLocalhostLinks' },
@@ -938,7 +940,9 @@ Registry.as<IConfigurationRegistry>(ConfigurationExtensions.Configuration).regis
 				localize({ comment: ['This is the description for a setting.'], key: 'browser.newTabPlacement.sideGroup' }, "New browser tabs open in a dedicated editor group to the side that is reused for subsequent tabs. The group is locked so other editors are not opened into it."),
 				localize({ comment: ['This is the description for a setting.'], key: 'browser.newTabPlacement.window' }, "New browser tabs open in a dedicated window that is reused for subsequent tabs. The window is locked so other editors are not opened into it.")
 			],
-			default: 'activeGroup',
+			// NOVA: default 'sideGroup' (upstream is 'activeGroup') for the
+			// Explorer | Editor | Browser (right) layout described in the plan.
+			default: 'sideGroup',
 			markdownDescription: localize(
 				{ comment: ['This is the description for a setting.'], key: 'browser.newTabPlacement' },
 				"Controls where new Integrated Browser tabs are opened."
