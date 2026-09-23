@@ -105,6 +105,8 @@ export class NovaBrowser implements vscode.Disposable {
 	}
 
 	async open(url: string, opts?: INovaOpenOptions): Promise<string> {
+		assertHostAllowed(url);
+
 		if (opts?.reuse) {
 			const existing = [...this._pagesById.values()].find(entry => sameHost(entry.tab.url, url));
 			if (existing) {
@@ -125,6 +127,7 @@ export class NovaBrowser implements vscode.Disposable {
 	}
 
 	async navigate(pageId: string, url: string): Promise<void> {
+		assertHostAllowed(url);
 		const { page } = await this._connect(pageId);
 		await page.goto(url, { waitUntil: 'domcontentloaded' });
 	}
@@ -323,6 +326,36 @@ export class NovaBrowser implements vscode.Disposable {
 	}
 
 	// #endregion
+}
+
+/**
+ * Enforces `nova.browserBridge.allowedHosts` / `allowExternalHosts` on any URL an
+ * external caller asks the bridge to open or navigate to. Internal, user-driven
+ * navigation inside the IDE is untouched — this only gates the bridge's own API.
+ */
+function assertHostAllowed(url: string): void {
+	const config = vscode.workspace.getConfiguration('nova.browserBridge');
+	if (config.get<boolean>('allowExternalHosts', false)) {
+		return;
+	}
+	const allowed = config.get<string[]>('allowedHosts', ['localhost', '127.0.0.1', '[::1]', '0.0.0.0', '[::]']);
+	let hostname: string;
+	try {
+		hostname = new URL(url).hostname;
+	} catch {
+		throw new Error(`Invalid URL: ${url}`);
+	}
+	// data:/about:/blob: URLs carry no network host to restrict; they're inline
+	// content, not a request to some remote origin, so the allowlist doesn't apply.
+	if (hostname === '') {
+		return;
+	}
+	if (!allowed.includes(hostname)) {
+		throw new Error(
+			`Host "${hostname}" is not in nova.browserBridge.allowedHosts (${allowed.join(', ')}). ` +
+			`Enable nova.browserBridge.allowExternalHosts to allow any host.`
+		);
+	}
 }
 
 function sameHost(a: string, b: string): boolean {
