@@ -56,7 +56,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.selfTest', () => runSelfTest(novaBrowser)));
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.copyToken', async () => {
 		await vscode.env.clipboard.writeText(token);
-		void vscode.window.showInformationMessage('Nova Browser Bridge token copied to the clipboard.');
+		void vscode.window.showInformationMessage(vscode.l10n.t('Nova Browser Bridge token copied to the clipboard.'));
 	}));
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.showStatus', () => showStatusPicker(bridge)));
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.configureCliAgents', () => configureCliAgents(mcpUrl)));
@@ -91,7 +91,7 @@ function createStatusBarItem(bridge: INovaBridgeServer): vscode.StatusBarItem {
 	const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
 	item.name = 'Nova Browser Bridge';
 	item.text = '$(radio-tower) Nova Bridge';
-	item.tooltip = `Nova Browser Bridge listening on 127.0.0.1:${bridge.port}. Click for options.`;
+	item.tooltip = vscode.l10n.t('Nova Browser Bridge listening on 127.0.0.1:{0}. Click for options.', bridge.port);
 	item.command = 'novaBrowserBridge.showStatus';
 	item.show();
 	return item;
@@ -105,23 +105,23 @@ function createDevServerStatusBarItem(devServerManager: DevServerManager): vscod
 	const render = (status: IDevServerStatus) => {
 		switch (status.phase) {
 			case 'starting':
-				item.text = '$(sync~spin) Dev: starting…';
+				item.text = `$(sync~spin) ${vscode.l10n.t('Dev: starting…')}`;
 				item.tooltip = status.message ?? status.command;
 				item.show();
 				break;
 			case 'running':
 				item.text = `$(circle-filled) Dev: ${status.url ?? ''}`;
-				item.tooltip = `${status.command} — click for options`;
+				item.tooltip = vscode.l10n.t('{0} — click for options', status.command ?? '');
 				item.show();
 				break;
 			case 'error':
-				item.text = '$(warning) Dev: error';
+				item.text = `$(warning) ${vscode.l10n.t('Dev: error')}`;
 				item.tooltip = status.message;
 				item.show();
 				break;
 			case 'stopped':
-				item.text = '$(circle-outline) Dev: stopped';
-				item.tooltip = status.message ?? 'Click to start the dev server';
+				item.text = `$(circle-outline) ${vscode.l10n.t('Dev: stopped')}`;
+				item.tooltip = status.message ?? vscode.l10n.t('Click to start the dev server');
 				item.show();
 				break;
 			case 'not-detected':
@@ -137,10 +137,10 @@ function createDevServerStatusBarItem(devServerManager: DevServerManager): vscod
 	const menuSub = vscode.commands.registerCommand('novaBrowserBridge.devServer.menu', async () => {
 		const status = devServerManager.status;
 		const items: (vscode.QuickPickItem & { action: string })[] = [
-			...(status.url ? [{ label: '$(globe) Open in Integrated Browser', action: 'open' }] : []),
-			{ label: '$(terminal) View logs', action: 'logs' },
-			{ label: '$(debug-restart) Restart', action: 'restart' },
-			{ label: '$(debug-stop) Stop', action: 'stop' },
+			...(status.url ? [{ label: `$(globe) ${vscode.l10n.t('Open in Integrated Browser')}`, action: 'open' }] : []),
+			{ label: `$(terminal) ${vscode.l10n.t('View logs')}`, action: 'logs' },
+			{ label: `$(debug-restart) ${vscode.l10n.t('Restart')}`, action: 'restart' },
+			{ label: `$(debug-stop) ${vscode.l10n.t('Stop')}`, action: 'stop' },
 		];
 		const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Nova Dev Server' });
 		switch (picked?.action) {
@@ -157,11 +157,11 @@ function createDevServerStatusBarItem(devServerManager: DevServerManager): vscod
 
 async function showStatusPicker(bridge: INovaBridgeServer): Promise<void> {
 	const items: (vscode.QuickPickItem & { action: string })[] = [
-		{ label: '$(link) MCP endpoint', description: `http://127.0.0.1:${bridge.port}/mcp`, action: 'noop' },
-		{ label: '$(key) Copy bridge token', action: 'copyToken' },
-		{ label: '$(gear) Configure CLI agents (Claude Code / Gemini / Codex)', action: 'configure' },
-		{ label: '$(beaker) Run self-test', action: 'selfTest' },
-		{ label: '$(debug-stop) Stop bridge server', action: 'stop' },
+		{ label: `$(link) ${vscode.l10n.t('MCP endpoint')}`, description: `http://127.0.0.1:${bridge.port}/mcp`, action: 'noop' },
+		{ label: `$(key) ${vscode.l10n.t('Copy bridge token')}`, action: 'copyToken' },
+		{ label: `$(gear) ${vscode.l10n.t('Configure CLI agents (Claude Code / Gemini / Codex)')}`, action: 'configure' },
+		{ label: `$(beaker) ${vscode.l10n.t('Run self-test')}`, action: 'selfTest' },
+		{ label: `$(debug-stop) ${vscode.l10n.t('Stop bridge server')}`, action: 'stop' },
 	];
 	const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Nova Browser Bridge' });
 	switch (picked?.action) {
@@ -170,7 +170,7 @@ async function showStatusPicker(bridge: INovaBridgeServer): Promise<void> {
 		case 'selfTest': return vscode.commands.executeCommand('novaBrowserBridge.selfTest');
 		case 'stop':
 			await bridge.close();
-			void vscode.window.showInformationMessage('Nova Browser Bridge stopped. Reload the window to start it again.');
+			void vscode.window.showInformationMessage(vscode.l10n.t('Nova Browser Bridge stopped. Reload the window to start it again.'));
 			return;
 		default: return;
 	}
@@ -185,7 +185,7 @@ async function showStatusPicker(bridge: INovaBridgeServer): Promise<void> {
 async function configureCliAgents(mcpUrl: string): Promise<void> {
 	const folder = vscode.workspace.workspaceFolders?.[0];
 	if (!folder) {
-		void vscode.window.showWarningMessage('Open a workspace folder first so Nova can write its project-level MCP config.');
+		void vscode.window.showWarningMessage(vscode.l10n.t('Open a workspace folder first so Nova can write its project-level MCP config.'));
 		return;
 	}
 
@@ -193,9 +193,9 @@ async function configureCliAgents(mcpUrl: string): Promise<void> {
 		[
 			{ label: 'Claude Code (.mcp.json)', picked: true, id: 'claude' },
 			{ label: 'Gemini CLI (.gemini/settings.json)', picked: true, id: 'gemini' },
-			{ label: 'Codex (show snippet for ~/.codex/config.toml)', picked: true, id: 'codex' },
+			{ label: vscode.l10n.t('Codex (show snippet for ~/.codex/config.toml)'), picked: true, id: 'codex' },
 		],
-		{ canPickMany: true, placeHolder: 'Which CLI agents should be configured to use this bridge?' },
+		{ canPickMany: true, placeHolder: vscode.l10n.t('Which CLI agents should be configured to use this bridge?') },
 	);
 	if (!targets || targets.length === 0) {
 		return;
@@ -225,7 +225,7 @@ async function configureCliAgents(mcpUrl: string): Promise<void> {
 				`url = "${mcpUrl}"`,
 				'bearer_token_env_var = "NOVA_BROWSER_TOKEN"',
 			].join('\n');
-			const doc = await vscode.workspace.openTextDocument({ language: 'toml', content: `# Add this to ~/.codex/config.toml\n\n${snippet}\n` });
+			const doc = await vscode.workspace.openTextDocument({ language: 'toml', content: `# ${vscode.l10n.t('Add this to ~/.codex/config.toml')}\n\n${snippet}\n` });
 			await vscode.window.showTextDocument(doc, { preview: false });
 		}
 	}
@@ -243,14 +243,15 @@ async function mergeJsonFile(uri: vscode.Uri, mutate: (json: Record<string, unkn
 		// File doesn't exist yet, or isn't valid JSON — we'll (re)create it below.
 	}
 
+	const yes = vscode.l10n.t('Yes');
 	const confirm = await vscode.window.showWarningMessage(
 		existed
-			? `Update ${vscode.workspace.asRelativePath(uri)} with the Nova Browser Bridge MCP server entry?`
-			: `Create ${vscode.workspace.asRelativePath(uri)} with the Nova Browser Bridge MCP server entry?`,
+			? vscode.l10n.t('Update {0} with the Nova Browser Bridge MCP server entry?', vscode.workspace.asRelativePath(uri))
+			: vscode.l10n.t('Create {0} with the Nova Browser Bridge MCP server entry?', vscode.workspace.asRelativePath(uri)),
 		{ modal: true },
-		'Yes',
+		yes,
 	);
-	if (confirm !== 'Yes') {
+	if (confirm !== yes) {
 		return;
 	}
 
@@ -278,7 +279,7 @@ async function runSelfTest(novaBrowser: NovaBrowser): Promise<void> {
 		await novaBrowser.close(pageId);
 
 		const firstLine = summary.split('\n').find(line => line.startsWith('Page Title:')) ?? summary.slice(0, 80);
-		void vscode.window.showInformationMessage(`Nova Browser Bridge OK — ${firstLine}`);
+		void vscode.window.showInformationMessage(vscode.l10n.t('Nova Browser Bridge OK — {0}', firstLine));
 		await fs.writeFile(SELF_TEST_RESULT_PATH, JSON.stringify({
 			ok: true,
 			durationMs: Date.now() - startedAt,
@@ -287,7 +288,7 @@ async function runSelfTest(novaBrowser: NovaBrowser): Promise<void> {
 		}, null, 2));
 	} catch (error) {
 		const message = error instanceof Error ? (error.stack ?? error.message) : String(error);
-		void vscode.window.showErrorMessage(`Nova Browser Bridge self-test failed: ${message}`);
+		void vscode.window.showErrorMessage(vscode.l10n.t('Nova Browser Bridge self-test failed: {0}', message));
 		await fs.writeFile(SELF_TEST_RESULT_PATH, JSON.stringify({
 			ok: false,
 			durationMs: Date.now() - startedAt,

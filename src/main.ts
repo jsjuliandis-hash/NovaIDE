@@ -766,7 +766,8 @@ function getUserDefinedLocale(argvConfig: IArgvConfig): string | undefined {
 		return locale.toLowerCase(); // a directly provided --locale always wins
 	}
 
-	return typeof argvConfig?.locale === 'string' ? argvConfig.locale.toLowerCase() : undefined;
+	// NOVA: Brazilian Portuguese is the default UI language unless argv.json/--locale says otherwise
+	return typeof argvConfig?.locale === 'string' ? argvConfig.locale.toLowerCase() : 'pt-br';
 }
 
 //#endregion

@@ -14,7 +14,8 @@ import { hasNodeModules, installCommand } from './packageManager';
 import { findLocalUrl } from './urlFinder';
 
 const TERMINAL_NAME = 'Dev Server';
-const SHELL_INTEGRATION_TIMEOUT_MS = 3_000;
+// PowerShell with a fresh profile can take well over 3s to report shell integration on slower machines.
+const SHELL_INTEGRATION_TIMEOUT_MS = 15_000;
 const URL_DETECTION_TIMEOUT_MS = 60_000;
 
 export type DevServerPhase = 'idle' | 'not-detected' | 'needs-install' | 'starting' | 'running' | 'stopped' | 'error';
@@ -39,7 +40,7 @@ export class DevServerManager implements vscode.Disposable {
 	constructor(private readonly novaBrowser: NovaBrowser) {
 		this._disposables.push(vscode.window.onDidCloseTerminal(t => {
 			if (t === this._terminal && !this._stopping) {
-				this._setStatus({ phase: 'stopped', message: 'The Dev Server terminal was closed.' });
+				this._setStatus({ phase: 'stopped', message: vscode.l10n.t('The Dev Server terminal was closed.') });
 				this._terminal = undefined;
 			}
 		}));
@@ -63,12 +64,12 @@ export class DevServerManager implements vscode.Disposable {
 	 */
 	async autoStart(): Promise<void> {
 		if (!vscode.workspace.isTrusted) {
-			this._setStatus({ phase: 'stopped', message: 'Workspace is not trusted; Nova will not auto-detect or run dev server scripts.' });
+			this._setStatus({ phase: 'stopped', message: vscode.l10n.t('Workspace is not trusted; Nova will not auto-detect or run dev server scripts.') });
 			return;
 		}
 		const root = vscode.workspace.workspaceFolders?.[0];
 		if (!root) {
-			this._setStatus({ phase: 'not-detected', message: 'No workspace folder is open.' });
+			this._setStatus({ phase: 'not-detected', message: vscode.l10n.t('No workspace folder is open.') });
 			return;
 		}
 
@@ -80,13 +81,13 @@ export class DevServerManager implements vscode.Disposable {
 
 		const setting = vscode.workspace.getConfiguration('nova.devServer').get<'always' | 'ask' | 'never'>('autoStart', 'ask');
 		if (setting === 'never') {
-			this._setStatus({ phase: 'stopped', message: 'Dev server detected but nova.devServer.autoStart is "never".' });
+			this._setStatus({ phase: 'stopped', message: vscode.l10n.t('Dev server detected but nova.devServer.autoStart is "never".') });
 			return;
 		}
 
 		const server = await this._resolve(result, root.uri.fsPath);
 		if (!server) {
-			this._setStatus({ phase: 'not-detected', message: 'No dev server candidate was chosen.' });
+			this._setStatus({ phase: 'not-detected', message: vscode.l10n.t('No dev server candidate was chosen.') });
 			return;
 		}
 
@@ -95,18 +96,21 @@ export class DevServerManager implements vscode.Disposable {
 			return;
 		}
 
+		const yes = vscode.l10n.t('Yes');
+		const always = vscode.l10n.t('Always for this workspace');
+		const never = vscode.l10n.t("Don't ask again");
 		const choice = await vscode.window.showInformationMessage(
-			`Detected a dev server (${server.command} in ${vscode.workspace.asRelativePath(server.cwd)}). Start it and open it in the Integrated Browser?`,
-			'Yes', 'Always for this workspace', "Don't ask again",
+			vscode.l10n.t('Detected a dev server ({0} in {1}). Start it and open it in the Integrated Browser?', server.command, vscode.workspace.asRelativePath(server.cwd)),
+			yes, always, never,
 		);
-		if (choice === 'Yes') {
+		if (choice === yes) {
 			await this.start(server);
-		} else if (choice === 'Always for this workspace') {
+		} else if (choice === always) {
 			await vscode.workspace.getConfiguration('nova.devServer').update('autoStart', 'always', vscode.ConfigurationTarget.Workspace);
 			await this.start(server);
-		} else if (choice === "Don't ask again") {
+		} else if (choice === never) {
 			await vscode.workspace.getConfiguration('nova.devServer').update('autoStart', 'never', vscode.ConfigurationTarget.Workspace);
-			this._setStatus({ phase: 'stopped', message: 'Dev server auto-start disabled for this workspace.' });
+			this._setStatus({ phase: 'stopped', message: vscode.l10n.t('Dev server auto-start disabled for this workspace.') });
 		}
 	}
 
@@ -163,25 +167,26 @@ export class DevServerManager implements vscode.Disposable {
 
 	private async _pickCandidate(candidates: IDevServerCandidate[]): Promise<IDevServerCandidate | undefined> {
 		const items = candidates.map(c => ({ label: c.label, candidate: c }));
-		const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Multiple runnable projects found — which one should Nova run as the dev server?' });
+		const picked = await vscode.window.showQuickPick(items, { placeHolder: vscode.l10n.t('Multiple runnable projects found — which one should Nova run as the dev server?') });
 		return picked?.candidate;
 	}
 
 	async start(server: IDetectedDevServer): Promise<void> {
 		if (!vscode.workspace.isTrusted) {
-			void vscode.window.showWarningMessage('Nova Browser Bridge will not run dev server scripts in an untrusted workspace.');
+			void vscode.window.showWarningMessage(vscode.l10n.t('Nova Browser Bridge will not run dev server scripts in an untrusted workspace.'));
 			return;
 		}
 
 		if (server.needsInstall && !hasNodeModules(server.cwd)) {
+			const installLabel = vscode.l10n.t('Install');
 			const install = await vscode.window.showWarningMessage(
-				`node_modules not found in ${vscode.workspace.asRelativePath(server.cwd)}. Install dependencies before starting the dev server?`,
-				{ modal: true }, 'Install',
+				vscode.l10n.t('node_modules not found in {0}. Install dependencies before starting the dev server?', vscode.workspace.asRelativePath(server.cwd)),
+				{ modal: true }, installLabel,
 			);
-			if (install !== 'Install') {
+			if (install !== installLabel) {
 				return;
 			}
-			this._setStatus({ phase: 'starting', cwd: server.cwd, message: 'Installing dependencies…' });
+			this._setStatus({ phase: 'starting', cwd: server.cwd, message: vscode.l10n.t('Installing dependencies…') });
 			await this._runInTerminal(installCommand(server.packageManager), server.cwd, server.env);
 		}
 
@@ -201,7 +206,7 @@ export class DevServerManager implements vscode.Disposable {
 		} else {
 			this._setStatus({
 				phase: 'error', cwd: server.cwd, command: server.command,
-				message: `Started, but no local URL was detected within ${URL_DETECTION_TIMEOUT_MS / 1000}s. Check the "${TERMINAL_NAME}" terminal.`,
+				message: vscode.l10n.t('Started, but no local URL was detected within {0}s. Check the "{1}" terminal.', URL_DETECTION_TIMEOUT_MS / 1000, TERMINAL_NAME),
 			});
 		}
 	}
@@ -266,7 +271,7 @@ export class DevServerManager implements vscode.Disposable {
 	 */
 	private async _detectUrl(execution: vscode.TerminalShellExecution | undefined, expectedPort: number | undefined): Promise<string | undefined> {
 		const fromOutput = execution ? this._detectUrlFromOutput(execution) : Promise.resolve(undefined);
-		const fromPolling = expectedPort ? this._pollPort('127.0.0.1', expectedPort) : Promise.resolve(undefined);
+		const fromPolling = expectedPort ? this._pollPort(expectedPort) : Promise.resolve(undefined);
 		const timeout = new Promise<undefined>(resolve => setTimeout(() => resolve(undefined), URL_DETECTION_TIMEOUT_MS));
 
 		return firstDefined([fromOutput, fromPolling, timeout]);
@@ -274,8 +279,11 @@ export class DevServerManager implements vscode.Disposable {
 
 	private async _detectUrlFromOutput(execution: vscode.TerminalShellExecution): Promise<string | undefined> {
 		try {
+			// Chunks can split a URL (or an escape sequence inside it), so match against a rolling tail.
+			let buffer = '';
 			for await (const chunk of execution.read()) {
-				const found = findLocalUrl(chunk);
+				buffer = (buffer + chunk).slice(-4096);
+				const found = findLocalUrl(buffer);
 				if (found) {
 					return `http://${found.host}:${found.port}/`;
 				}
@@ -286,11 +294,13 @@ export class DevServerManager implements vscode.Disposable {
 		return undefined;
 	}
 
-	private async _pollPort(host: string, port: number): Promise<string | undefined> {
+	/** Node 17+ resolves `localhost` to ::1 first, so servers like Vite often listen on IPv6 only. */
+	private async _pollPort(port: number): Promise<string | undefined> {
 		const deadline = Date.now() + URL_DETECTION_TIMEOUT_MS;
 		while (Date.now() < deadline) {
-			if (await isPortOpen(host, port)) {
-				return `http://${host}:${port}/`;
+			const [ipv4, ipv6] = await Promise.all([isPortOpen('127.0.0.1', port), isPortOpen('::1', port)]);
+			if (ipv4 || ipv6) {
+				return `http://localhost:${port}/`;
 			}
 			await new Promise(r => setTimeout(r, 1_000));
 		}

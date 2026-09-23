@@ -18,6 +18,7 @@ import { ILogService } from '../../log/common/log.js';
 import { ILocalizationContribution } from '../../extensions/common/extensions.js';
 import { ILanguagePackItem, LanguagePackBaseService } from '../common/languagePacks.js';
 import { URI } from '../../../base/common/uri.js';
+import { language as platformLanguage, translationsConfigFile } from '../../../base/common/platform.js';
 
 interface ILanguagePack {
 	hash: string;
@@ -54,12 +55,30 @@ export class NativeLanguagePackService extends LanguagePackBaseService {
 		const packs = await this.cache.getLanguagePacks();
 		const pack = packs[language];
 		if (!pack) {
-			this.logService.warn(`No language pack found for ${language}`);
-			return undefined;
+			const fromActiveConfig = await this.getTranslationsUriFromActiveConfig(id, language);
+			if (!fromActiveConfig) {
+				this.logService.warn(`No language pack found for ${language}`);
+			}
+			return fromActiveConfig;
 		}
 
 		const translation = pack.translations[id];
 		return translation ? URI.file(translation) : undefined;
+	}
+
+	// NOVA: the dev language pack from build/nova/devNls.ts is not an installed extension,
+	// so fall back to the translations config file the process was started with.
+	private async getTranslationsUriFromActiveConfig(id: string, language: string): Promise<URI | undefined> {
+		if (!translationsConfigFile || platformLanguage !== language) {
+			return undefined;
+		}
+		try {
+			const translations: Record<string, string | undefined> = JSON.parse(await fs.promises.readFile(translationsConfigFile, 'utf8'));
+			const translation = translations[id];
+			return translation ? URI.file(translation) : undefined;
+		} catch {
+			return undefined;
+		}
 	}
 
 	async getInstalledLanguages(): Promise<Array<ILanguagePackItem>> {

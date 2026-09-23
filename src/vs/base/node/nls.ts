@@ -47,6 +47,13 @@ export interface IResolveNLSConfigurationContext {
 export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPath, commit, nlsMetadataPath, nlsMetadataHash }: IResolveNLSConfigurationContext): Promise<INLSConfiguration> {
 	mark('code/willGenerateNls');
 
+	if (process.env['VSCODE_DEV'] && userLocale !== 'pseudo' && !userLocale.startsWith('en')) {
+		const devConfiguration = await resolveNovaDevNLSConfiguration(userLocale, osLocale, nlsMetadataPath);
+		if (devConfiguration) {
+			return devConfiguration;
+		}
+	}
+
 	if (
 		process.env['VSCODE_DEV'] ||
 		userLocale === 'pseudo' ||
@@ -200,6 +207,35 @@ function resolveLanguagePackLanguage(languagePacks: ILanguagePacks, locale: stri
 		console.error('Resolving language pack configuration failed.', error);
 	}
 
+	return undefined;
+}
+
+// NOVA: dev builds have no nls.keys.json, so they use the per-message translations written by
+// build/nova/devNls.ts to <repo>/.build/nova-nls/<locale>/ (tried as `pt-br`, then `pt`).
+async function resolveNovaDevNLSConfiguration(userLocale: string, osLocale: string, nlsMetadataPath: string): Promise<INLSConfiguration | undefined> {
+	const devNlsRoot = join(nlsMetadataPath, '..', '.build', 'nova-nls');
+	for (const language of [userLocale, userLocale.split('-')[0]]) {
+		const languageDir = join(devNlsRoot, language);
+		const messagesFile = join(languageDir, 'messages.json');
+		const translationsConfigFile = join(languageDir, 'tcf.json');
+		if (await Promises.exists(messagesFile) && await Promises.exists(translationsConfigFile)) {
+			const corruptMarkerFile = join(languageDir, 'corrupted.info');
+			return {
+				userLocale,
+				osLocale,
+				resolvedLanguage: language,
+				defaultMessagesFile: join(nlsMetadataPath, 'nls.messages.json'),
+				languagePack: { translationsConfigFile, messagesFile, corruptMarkerFile },
+				locale: userLocale,
+				availableLanguages: { '*': language },
+				_languagePackSupport: true,
+				_translationsConfigFile: translationsConfigFile,
+				_cacheRoot: languageDir,
+				_resolvedLanguagePackCoreLocation: languageDir,
+				_corruptedFile: corruptMarkerFile
+			};
+		}
+	}
 	return undefined;
 }
 

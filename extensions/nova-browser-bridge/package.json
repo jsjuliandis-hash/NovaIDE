@@ -1,7 +1,7 @@
 {
   "name": "nova-browser-bridge",
-  "displayName": "Nova Browser Bridge",
-  "description": "Expõe o Integrated Browser da Nova IDE (mesma aba visível ao usuário) a agentes externos via MCP e CLI.",
+  "displayName": "%displayName%",
+  "description": "%description%",
   "version": "0.1.0",
   "private": true,
   "publisher": "nova-ide",
@@ -29,69 +29,81 @@
     "commands": [
       {
         "command": "novaBrowserBridge.selfTest",
-        "title": "Nova Browser Bridge: Self Test",
+        "title": "%command.selfTest%",
         "category": "Nova"
       },
       {
         "command": "novaBrowserBridge.configureCliAgents",
-        "title": "Nova Browser Bridge: Configure CLI Agents (Claude Code, Gemini, Codex)",
+        "title": "%command.configureCliAgents%",
         "category": "Nova"
       },
       {
         "command": "novaBrowserBridge.copyToken",
-        "title": "Nova Browser Bridge: Copy Bridge Token",
+        "title": "%command.copyToken%",
         "category": "Nova"
       },
       {
         "command": "novaBrowserBridge.showStatus",
-        "title": "Nova Browser Bridge: Show Status",
+        "title": "%command.showStatus%",
         "category": "Nova"
       },
       {
         "command": "novaBrowserBridge.devServer.start",
-        "title": "Nova: Start Dev Server",
+        "title": "%command.devServer.start%",
         "category": "Nova"
       },
       {
         "command": "novaBrowserBridge.devServer.stop",
-        "title": "Nova: Stop Dev Server",
+        "title": "%command.devServer.stop%",
         "category": "Nova"
       },
       {
         "command": "novaBrowserBridge.devServer.restart",
-        "title": "Nova: Restart Dev Server",
+        "title": "%command.devServer.restart%",
         "category": "Nova"
       }
     ],
     "configuration": {
-      "title": "Nova Browser Bridge",
+      "title": "%config.title%",
       "properties": {
         "nova.browserBridge.port": {
           "type": "number",
           "default": 47800,
-          "description": "Porta TCP preferida para o servidor local da Nova Browser Bridge (MCP + REST). Se estiver ocupada, uma porta livre é escolhida automaticamente."
+          "description": "%config.port%"
         },
         "nova.browserBridge.allowedHosts": {
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["localhost", "127.0.0.1", "[::1]", "0.0.0.0", "[::]"],
-          "markdownDescription": "Hosts para os quais `open`/`navigate` são permitidos por padrão. Uma URL cujo host não esteja nesta lista é recusada, a menos que `#nova.browserBridge.allowExternalHosts#` esteja habilitado."
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "localhost",
+            "127.0.0.1",
+            "[::1]",
+            "0.0.0.0",
+            "[::]"
+          ],
+          "markdownDescription": "%config.allowedHosts%"
         },
         "nova.browserBridge.allowExternalHosts": {
           "type": "boolean",
           "default": false,
-          "description": "Permite que agentes abram/naveguem para qualquer host, não só os listados em nova.browserBridge.allowedHosts. Habilite com cautela."
+          "description": "%config.allowExternalHosts%"
         },
         "nova.browserBridge.allowEvaluate": {
           "type": "boolean",
           "default": false,
-          "description": "Permite que agentes executem código Playwright arbitrário (run_playwright / comando 'run' da CLI) contra páginas do navegador integrado. Na primeira tentativa, o usuário é solicitado a confirmar."
+          "description": "%config.allowEvaluate%"
         },
         "nova.devServer.autoStart": {
           "type": "string",
-          "enum": ["always", "ask", "never"],
+          "enum": [
+            "always",
+            "ask",
+            "never"
+          ],
           "default": "ask",
-          "description": "Se a Nova IDE deve subir automaticamente o dev server detectado do projeto ao abrir a pasta. 'ask' pergunta uma vez e lembra a resposta para este workspace."
+          "description": "%config.devServer.autoStart%"
         }
       }
     }

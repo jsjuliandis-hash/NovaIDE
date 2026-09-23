@@ -1,0 +1,17 @@
+{
+	"displayName": "Nova Browser Bridge",
+	"description": "Exposes the Nova IDE Integrated Browser (the same tab the user sees) to external agents via MCP and a CLI.",
+	"command.selfTest": "Nova Browser Bridge: Self Test",
+	"command.configureCliAgents": "Nova Browser Bridge: Configure CLI Agents (Claude Code, Gemini, Codex)",
+	"command.copyToken": "Nova Browser Bridge: Copy Bridge Token",
+	"command.showStatus": "Nova Browser Bridge: Show Status",
+	"command.devServer.start": "Nova: Start Dev Server",
+	"command.devServer.stop": "Nova: Stop Dev Server",
+	"command.devServer.restart": "Nova: Restart Dev Server",
+	"config.title": "Nova Browser Bridge",
+	"config.port": "Preferred TCP port for the local Nova Browser Bridge server (MCP + REST). If it is busy, a free port is chosen automatically.",
+	"config.allowedHosts": "Hosts that `open`/`navigate` are allowed to reach by default. A URL whose host is not in this list is refused unless `#nova.browserBridge.allowExternalHosts#` is enabled.",
+	"config.allowExternalHosts": "Allows agents to open/navigate to any host, not only those listed in nova.browserBridge.allowedHosts. Enable with care.",
+	"config.allowEvaluate": "Allows agents to run arbitrary Playwright code (run_playwright / the CLI 'run' command) against Integrated Browser pages. The user is asked to confirm on the first attempt.",
+	"config.devServer.autoStart": "Whether Nova IDE should automatically start the project's detected dev server when the folder is opened. 'ask' asks once and remembers the answer for this workspace."
+}

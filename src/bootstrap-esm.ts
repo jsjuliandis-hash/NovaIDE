@@ -246,7 +246,7 @@ async function doSetupNLS(): Promise<INLSConfiguration | undefined> {
 	}
 
 	if (
-		process.env['VSCODE_DEV'] ||	// no NLS support in dev mode
+		(process.env['VSCODE_DEV'] && !nlsConfig?.languagePack) ||	// NOVA: dev mode only supports the build/nova/devNls.ts language pack
 		!messagesFile					// no NLS messages file
 	) {
 		return undefined;

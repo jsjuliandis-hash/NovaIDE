@@ -90,12 +90,13 @@ export async function ensureEvaluateAllowed(): Promise<void> {
 		return;
 	}
 
+	const allowLabel = vscode.l10n.t('Allow');
 	const allow = await vscode.window.showWarningMessage(
-		'An external agent wants to run custom Playwright code against a browser page controlled by this workspace. Allow this for the current workspace?',
+		vscode.l10n.t('An external agent wants to run custom Playwright code against a browser page controlled by this workspace. Allow this for the current workspace?'),
 		{ modal: true },
-		'Allow',
+		allowLabel,
 	);
-	if (allow !== 'Allow') {
+	if (allow !== allowLabel) {
 		throw new Error('Denied: nova.browserBridge.allowEvaluate is disabled for this workspace.');
 	}
 	await config.update('allowEvaluate', true, vscode.ConfigurationTarget.Workspace);
