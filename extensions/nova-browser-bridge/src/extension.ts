@@ -9,6 +9,7 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
+import { DevServerManager, type IDevServerStatus } from './devServer/devServerManager';
 import { NovaBrowser } from './novaBrowser';
 import { startBridgeServer, type INovaBridgeServer } from './server/httpServer';
 import { generateToken, removeBridgeFile, writeBridgeFile } from './server/security';
@@ -19,12 +20,23 @@ import { generateToken, removeBridgeFile, writeBridgeFile } from './server/secur
 const SELF_TEST_RESULT_PATH = path.join(os.tmpdir(), 'nova-browser-selftest.json');
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
+	if (process.env.NOVA_BROWSER_DIAG === '1') {
+		await fs.writeFile(path.join(os.tmpdir(), 'nova-browser-diag.json'), JSON.stringify({
+			isTrusted: vscode.workspace.isTrusted,
+			workspaceName: vscode.workspace.name,
+			folders: vscode.workspace.workspaceFolders?.map(f => f.uri.fsPath) ?? null,
+		}, null, 2));
+	}
+
 	const novaBrowser = new NovaBrowser();
 	context.subscriptions.push(novaBrowser);
 
+	const devServerManager = new DevServerManager(novaBrowser);
+	context.subscriptions.push(devServerManager);
+
 	const token = generateToken();
 	const preferredPort = vscode.workspace.getConfiguration('nova.browserBridge').get<number>('port', 47800);
-	const bridge = await startBridgeServer(novaBrowser, token, preferredPort);
+	const bridge = await startBridgeServer(novaBrowser, devServerManager, token, preferredPort);
 	context.subscriptions.push({ dispose: () => void bridge.close() });
 
 	const mcpUrl = `http://127.0.0.1:${bridge.port}/mcp`;
@@ -38,6 +50,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const statusBarItem = createStatusBarItem(bridge);
 	context.subscriptions.push(statusBarItem);
 
+	const devServerStatusBarItem = createDevServerStatusBarItem(devServerManager);
+	context.subscriptions.push(devServerStatusBarItem);
+
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.selfTest', () => runSelfTest(novaBrowser)));
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.copyToken', async () => {
 		await vscode.env.clipboard.writeText(token);
@@ -45,9 +60,16 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	}));
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.showStatus', () => showStatusPicker(bridge)));
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.configureCliAgents', () => configureCliAgents(mcpUrl)));
+	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.devServer.start', () => devServerManager.autoStart()));
+	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.devServer.stop', () => devServerManager.stop()));
+	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.devServer.restart', () => devServerManager.restart()));
 
 	if (process.env.NOVA_BROWSER_SELFTEST_ON_STARTUP === '1') {
 		void runSelfTest(novaBrowser);
+	}
+
+	if (process.env.NOVA_BROWSER_DEVSERVER_AUTOSTART !== '0') {
+		void devServerManager.autoStart();
 	}
 }
 
@@ -73,6 +95,64 @@ function createStatusBarItem(bridge: INovaBridgeServer): vscode.StatusBarItem {
 	item.command = 'novaBrowserBridge.showStatus';
 	item.show();
 	return item;
+}
+
+function createDevServerStatusBarItem(devServerManager: DevServerManager): vscode.Disposable {
+	const item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 99);
+	item.name = 'Nova Dev Server';
+	item.command = 'novaBrowserBridge.devServer.menu';
+
+	const render = (status: IDevServerStatus) => {
+		switch (status.phase) {
+			case 'starting':
+				item.text = '$(sync~spin) Dev: starting…';
+				item.tooltip = status.message ?? status.command;
+				item.show();
+				break;
+			case 'running':
+				item.text = `$(circle-filled) Dev: ${status.url ?? ''}`;
+				item.tooltip = `${status.command} — click for options`;
+				item.show();
+				break;
+			case 'error':
+				item.text = '$(warning) Dev: error';
+				item.tooltip = status.message;
+				item.show();
+				break;
+			case 'stopped':
+				item.text = '$(circle-outline) Dev: stopped';
+				item.tooltip = status.message ?? 'Click to start the dev server';
+				item.show();
+				break;
+			case 'not-detected':
+			case 'needs-install':
+			case 'idle':
+			default:
+				item.hide();
+		}
+	};
+	render(devServerManager.status);
+	const sub = devServerManager.onDidChangeStatus(render);
+
+	const menuSub = vscode.commands.registerCommand('novaBrowserBridge.devServer.menu', async () => {
+		const status = devServerManager.status;
+		const items: (vscode.QuickPickItem & { action: string })[] = [
+			...(status.url ? [{ label: '$(globe) Open in Integrated Browser', action: 'open' }] : []),
+			{ label: '$(terminal) View logs', action: 'logs' },
+			{ label: '$(debug-restart) Restart', action: 'restart' },
+			{ label: '$(debug-stop) Stop', action: 'stop' },
+		];
+		const picked = await vscode.window.showQuickPick(items, { placeHolder: 'Nova Dev Server' });
+		switch (picked?.action) {
+			case 'open': return devServerManager.openInBrowser();
+			case 'logs': return devServerManager.revealTerminal();
+			case 'restart': return devServerManager.restart();
+			case 'stop': return devServerManager.stop();
+			default: return;
+		}
+	});
+
+	return { dispose: () => { item.dispose(); sub.dispose(); menuSub.dispose(); } };
 }
 
 async function showStatusPicker(bridge: INovaBridgeServer): Promise<void> {
@@ -156,7 +236,8 @@ async function mergeJsonFile(uri: vscode.Uri, mutate: (json: Record<string, unkn
 	let existed = false;
 	try {
 		const raw = await vscode.workspace.fs.readFile(uri);
-		json = JSON.parse(Buffer.from(raw).toString('utf8'));
+		// Strip a leading UTF-8 BOM: some editors write one, and JSON.parse rejects it outright.
+		json = JSON.parse(Buffer.from(raw).toString('utf8').replace(/^﻿/, ''));
 		existed = true;
 	} catch {
 		// File doesn't exist yet, or isn't valid JSON — we'll (re)create it below.

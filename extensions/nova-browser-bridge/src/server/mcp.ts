@@ -1,21 +1,20 @@
 /*---------------------------------------------------------------------------------------------
  *  Nova IDE — nova-browser-bridge
- *  Builds the MCP server exposed at /mcp. Every tool is a thin pass-through to
- *  NovaBrowser; the interesting bridging work (Playwright over the tab's own
- *  CDP session) lives in novaBrowser.ts, not here.
- *
- *  devserver_status / devserver_restart are intentionally not implemented yet —
- *  they land in Fase 5 once DevServerManager exists.
+ *  Builds the MCP server exposed at /mcp. Every browser_* tool is a thin
+ *  pass-through to NovaBrowser; the interesting bridging work (Playwright over
+ *  the tab's own CDP session) lives in novaBrowser.ts, not here.
+ *  devserver_* tools are a thin pass-through to DevServerManager (Fase 5).
  *-------------------------------------------------------------------------------------------*/
 
 import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod';
+import { DevServerManager } from '../devServer/devServerManager';
 import { NovaBrowser } from '../novaBrowser';
 import { ensureEvaluateAllowed } from './security';
 
 const pageIdSchema = z.string().describe('Page id returned by browser_list_pages or browser_open.');
 
-export function buildMcpServer(novaBrowser: NovaBrowser): McpServer {
+export function buildMcpServer(novaBrowser: NovaBrowser, devServerManager: DevServerManager): McpServer {
 	const server = new McpServer({ name: 'nova-browser-bridge', version: '0.1.0' });
 
 	server.registerTool(
@@ -128,6 +127,21 @@ export function buildMcpServer(novaBrowser: NovaBrowser): McpServer {
 				content: [{ type: 'text' as const, text: JSON.stringify(outcome, null, 2) }],
 				...(outcome.error ? { isError: true } : {}),
 			};
+		},
+	);
+
+	server.registerTool(
+		'devserver_status',
+		{ description: "Get the workspace's detected dev server status: phase (idle/not-detected/starting/running/error/stopped), URL if running, and command/cwd.", inputSchema: {} },
+		async () => textResult(JSON.stringify(devServerManager.status, null, 2)),
+	);
+
+	server.registerTool(
+		'devserver_restart',
+		{ description: 'Restart the detected dev server (starts it if it is not already running) and open its URL in the Integrated Browser once detected.', inputSchema: {} },
+		async () => {
+			await devServerManager.restart();
+			return textResult(JSON.stringify(devServerManager.status, null, 2));
 		},
 	);
 

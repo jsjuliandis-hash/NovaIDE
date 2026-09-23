@@ -10,6 +10,7 @@
 import * as http from 'node:http';
 import { toNodeHandler } from '@modelcontextprotocol/node';
 import { createMcpHandler } from '@modelcontextprotocol/server';
+import { DevServerManager } from '../devServer/devServerManager';
 import { NovaBrowser } from '../novaBrowser';
 import { buildMcpServer } from './mcp';
 import { handleRest } from './rest';
@@ -25,8 +26,8 @@ function candidatePorts(preferred: number): number[] {
 	return [preferred, 0 /* let the OS pick a free ephemeral port */];
 }
 
-export async function startBridgeServer(novaBrowser: NovaBrowser, token: string, preferredPort: number): Promise<INovaBridgeServer> {
-	const mcpHandler = createMcpHandler(() => buildMcpServer(novaBrowser));
+export async function startBridgeServer(novaBrowser: NovaBrowser, devServerManager: DevServerManager, token: string, preferredPort: number): Promise<INovaBridgeServer> {
+	const mcpHandler = createMcpHandler(() => buildMcpServer(novaBrowser, devServerManager));
 	const mcpNodeHandler = toNodeHandler(mcpHandler);
 
 	const server = http.createServer((req, res) => {
@@ -37,7 +38,7 @@ export async function startBridgeServer(novaBrowser: NovaBrowser, token: string,
 		if (pathname === '/mcp') {
 			void mcpNodeHandler(req, res);
 		} else if (pathname.startsWith('/v1/')) {
-			void handleRest(novaBrowser, req, res);
+			void handleRest(novaBrowser, devServerManager, req, res);
 		} else {
 			res.writeHead(404, { 'content-type': 'text/plain' });
 			res.end('Not found. Use /mcp (MCP) or /v1/* (REST).');

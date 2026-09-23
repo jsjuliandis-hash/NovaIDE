@@ -6,10 +6,11 @@
  *-------------------------------------------------------------------------------------------*/
 
 import * as http from 'node:http';
+import { DevServerManager } from '../devServer/devServerManager';
 import { NovaBrowser } from '../novaBrowser';
 import { ensureEvaluateAllowed } from './security';
 
-type Handler = (novaBrowser: NovaBrowser, params: RegExpExecArray, body: unknown, query: URLSearchParams) => Promise<{ status: number; json?: unknown; png?: Uint8Array }>;
+type Handler = (nb: NovaBrowser, dev: DevServerManager, params: RegExpExecArray, body: unknown, query: URLSearchParams) => Promise<{ status: number; json?: unknown; png?: Uint8Array }>;
 
 const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
 	{
@@ -18,7 +19,7 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
 	},
 	{
 		method: 'POST', pattern: /^\/v1\/pages$/,
-		handler: async (nb, _p, body) => {
+		handler: async (nb, _dev, _p, body) => {
 			const { url, reuse, background } = asRecord(body);
 			const id = await nb.open(String(url), { reuse: !!reuse, background: !!background });
 			return { status: 200, json: { id } };
@@ -26,55 +27,63 @@ const routes: { method: string; pattern: RegExp; handler: Handler }[] = [
 	},
 	{
 		method: 'POST', pattern: /^\/v1\/pages\/([^/]+)\/navigate$/,
-		handler: async (nb, p, body) => {
+		handler: async (nb, _dev, p, body) => {
 			await nb.navigate(p[1], String(asRecord(body).url));
 			return { status: 200, json: { ok: true } };
 		},
 	},
 	{
 		method: 'POST', pattern: /^\/v1\/pages\/([^/]+)\/reload$/,
-		handler: async (nb, p) => { await nb.reload(p[1]); return { status: 200, json: { ok: true } }; },
+		handler: async (nb, _dev, p) => { await nb.reload(p[1]); return { status: 200, json: { ok: true } }; },
 	},
 	{
 		method: 'POST', pattern: /^\/v1\/pages\/([^/]+)\/close$/,
-		handler: async (nb, p) => { await nb.close(p[1]); return { status: 200, json: { ok: true } }; },
+		handler: async (nb, _dev, p) => { await nb.close(p[1]); return { status: 200, json: { ok: true } }; },
 	},
 	{
 		method: 'GET', pattern: /^\/v1\/pages\/([^/]+)\/snapshot$/,
-		handler: async (nb, p) => ({ status: 200, json: { summary: await nb.snapshot(p[1]) } }),
+		handler: async (nb, _dev, p) => ({ status: 200, json: { summary: await nb.snapshot(p[1]) } }),
 	},
 	{
 		method: 'GET', pattern: /^\/v1\/pages\/([^/]+)\/screenshot$/,
-		handler: async (nb, p, _body, query) => ({ status: 200, png: await nb.screenshot(p[1], { fullPage: query.get('fullPage') === 'true' }) }),
+		handler: async (nb, _dev, p, _body, query) => ({ status: 200, png: await nb.screenshot(p[1], { fullPage: query.get('fullPage') === 'true' }) }),
 	},
 	{
 		method: 'POST', pattern: /^\/v1\/pages\/([^/]+)\/click$/,
-		handler: async (nb, p, body) => ({ status: 200, json: { summary: await nb.click(p[1], String(asRecord(body).target)) } }),
+		handler: async (nb, _dev, p, body) => ({ status: 200, json: { summary: await nb.click(p[1], String(asRecord(body).target)) } }),
 	},
 	{
 		method: 'POST', pattern: /^\/v1\/pages\/([^/]+)\/type$/,
-		handler: async (nb, p, body) => {
+		handler: async (nb, _dev, p, body) => {
 			const { target, text } = asRecord(body);
 			return { status: 200, json: { summary: await nb.type(p[1], String(target), String(text)) } };
 		},
 	},
 	{
 		method: 'GET', pattern: /^\/v1\/pages\/([^/]+)\/console$/,
-		handler: async (nb, p, _body, query) => {
+		handler: async (nb, _dev, p, _body, query) => {
 			const sinceMs = query.get('sinceMs');
 			return { status: 200, json: nb.consoleLogs(p[1], sinceMs ? Number(sinceMs) : undefined) };
 		},
 	},
 	{
 		method: 'POST', pattern: /^\/v1\/pages\/([^/]+)\/run$/,
-		handler: async (nb, p, body) => {
+		handler: async (nb, _dev, p, body) => {
 			await ensureEvaluateAllowed();
 			return { status: 200, json: await nb.runPlaywright(p[1], String(asRecord(body).code)) };
 		},
 	},
+	{
+		method: 'GET', pattern: /^\/v1\/devserver$/,
+		handler: async (_nb, dev) => ({ status: 200, json: dev.status }),
+	},
+	{
+		method: 'POST', pattern: /^\/v1\/devserver\/restart$/,
+		handler: async (_nb, dev) => { await dev.restart(); return { status: 200, json: dev.status }; },
+	},
 ];
 
-export async function handleRest(novaBrowser: NovaBrowser, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+export async function handleRest(novaBrowser: NovaBrowser, devServerManager: DevServerManager, req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
 	const url = new URL(req.url ?? '/', 'http://internal');
 	const route = routes.find(r => r.method === req.method && r.pattern.test(url.pathname));
 	if (!route) {
@@ -86,7 +95,7 @@ export async function handleRest(novaBrowser: NovaBrowser, req: http.IncomingMes
 
 	try {
 		const body = req.method === 'POST' ? await readJsonBody(req) : undefined;
-		const result = await route.handler(novaBrowser, match, body, url.searchParams);
+		const result = await route.handler(novaBrowser, devServerManager, match, body, url.searchParams);
 		if (result.png) {
 			res.writeHead(result.status, { 'content-type': 'image/png', 'content-length': result.png.byteLength });
 			res.end(Buffer.from(result.png));

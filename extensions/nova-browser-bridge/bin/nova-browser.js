@@ -204,9 +204,17 @@ async function main() {
 			return;
 		}
 
-		case 'dev':
-			console.log('nova-browser dev: not implemented yet (Fase 5 — DevServerManager).');
+		case 'dev': {
+			const [sub] = rest;
+			if (sub === 'status') {
+				console.log(JSON.stringify(await request(conn, 'GET', '/devserver'), null, 2));
+			} else if (sub === 'restart') {
+				console.log(JSON.stringify(await request(conn, 'POST', '/devserver/restart'), null, 2));
+			} else {
+				throw new Error('Usage: nova-browser dev status|restart');
+			}
 			return;
+		}
 
 		default:
 			console.error(`Unknown command: ${command}\n`);
@@ -230,6 +238,8 @@ Usage:
   nova-browser type <target> <text> [--page <id>]
   nova-browser console [--page <id>] [--since <ms>]
   nova-browser run <file.js|-> [--page <id>]
+  nova-browser dev status
+  nova-browser dev restart
 
 Most commands default to the page opened by the last "nova-browser open" in this
 directory (tracked in .nova/state.json). Pass --page <id> to target another one.`);
