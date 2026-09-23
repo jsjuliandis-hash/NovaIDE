@@ -1,0 +1,47 @@
+{
+  "name": "nova-browser-bridge",
+  "displayName": "Nova Browser Bridge",
+  "description": "Expõe o Integrated Browser da Nova IDE (mesma aba visível ao usuário) a agentes externos via MCP e CLI.",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "nova-ide",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "enabledApiProposals": [
+    "browser"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension",
+  "contributes": {
+    "commands": [
+      {
+        "command": "novaBrowserBridge.selfTest",
+        "title": "Nova Browser Bridge: Self Test",
+        "category": "Nova"
+      }
+    ]
+  },
+  "scripts": {
+    "compile": "gulp compile-extension:nova-browser-bridge",
+    "watch": "gulp watch-extension:nova-browser-bridge"
+  },
+  "dependencies": {
+    "playwright-core": "^1.48.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.x"
+  }
+}
