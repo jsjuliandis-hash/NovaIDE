@@ -85,8 +85,29 @@
 				},
 				"publisherDisplayName": "Microsoft"
 			}
+		},
+		{
+			"name": "MS-CEINTL.vscode-language-pack-pt-BR",
+			"version": "1.131.0",
+			"sha256": "31cd674f7ae6f10cfb05f882f7bc01fe4e4e3cf9049bcaea4617338a537256e7",
+			"repo": "https://github.com/microsoft/vscode-loc",
+			"metadata": {
+				"id": "3fd25437-acd9-42d7-ab19-581a69ce2dd9",
+				"publisherId": {
+					"publisherId": "0b0882c3-aee3-4d7c-b5f9-872f9be0a115",
+					"publisherName": "MS-CEINTL",
+					"displayName": "MS-CEINTL",
+					"flags": ""
+				},
+				"publisherDisplayName": "MS-CEINTL"
+			}
 		}
 	],
+	"extensionEnabledApiProposals": {
+		"nova-ide.nova-browser-bridge": [
+			"browser"
+		]
+	},
 	"defaultChatAgent": {
 		"extensionId": "GitHub.copilot",
 		"chatExtensionId": "GitHub.copilot-chat",

@@ -6,7 +6,7 @@
 import { join } from '../common/path.js';
 import { promises } from 'fs';
 import { mark } from '../common/performance.js';
-import { ILanguagePacks, INLSConfiguration } from '../../nls.js';
+import { ILanguagePack, ILanguagePacks, INLSConfiguration } from '../../nls.js';
 import { Promises } from './pfs.js';
 
 export interface IResolveNLSConfigurationContext {
@@ -65,7 +65,11 @@ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPa
 	}
 
 	try {
-		const languagePacks = await getLanguagePackConfigurations(userDataPath);
+		// NOVA: language packs bundled as built-in extensions work from the first launch, before
+		// anything writes languagepacks.json. Installed language packs still take precedence.
+		const installedLanguagePacks = await getLanguagePackConfigurations(userDataPath);
+		const builtinLanguagePacks = await getNovaBuiltinLanguagePacks(nlsMetadataPath);
+		const languagePacks = builtinLanguagePacks || installedLanguagePacks ? { ...builtinLanguagePacks, ...installedLanguagePacks } : undefined;
 		if (!languagePacks) {
 			return defaultNLSConfiguration(userLocale, osLocale, nlsMetadataPath);
 		}
@@ -187,6 +191,67 @@ async function getLanguagePackConfigurations(userDataPath: string): Promise<ILan
 	} catch (err) {
 		return undefined; // Do nothing. If we can't read the file we have no language pack config.
 	}
+}
+
+interface INovaLocalizationManifest {
+	readonly name?: string;
+	readonly publisher?: string;
+	readonly version?: string;
+	readonly contributes?: {
+		readonly localizations?: {
+			readonly languageId?: string;
+			readonly languageName?: string;
+			readonly localizedLanguageName?: string;
+			readonly translations?: { readonly id?: string; readonly path?: string }[];
+		}[];
+	};
+}
+
+/**
+ * NOVA: builds language pack configurations from the language pack extensions shipped in
+ * `<appRoot>/extensions` (see `builtInExtensions` in product.json).
+ */
+async function getNovaBuiltinLanguagePacks(nlsMetadataPath: string): Promise<ILanguagePacks | undefined> {
+	const extensionsPath = join(nlsMetadataPath, '..', 'extensions');
+	let folders: string[];
+	try {
+		folders = (await promises.readdir(extensionsPath)).filter(folder => /language-pack/i.test(folder));
+	} catch {
+		return undefined;
+	}
+
+	const languagePacks: Record<string, ILanguagePack> = {};
+	for (const folder of folders) {
+		const extensionPath = join(extensionsPath, folder);
+		let manifest: INovaLocalizationManifest;
+		try {
+			manifest = JSON.parse(await promises.readFile(join(extensionPath, 'package.json'), 'utf-8'));
+		} catch {
+			continue;
+		}
+
+		const id = `${manifest.publisher}.${manifest.name}`.toLowerCase();
+		const version = manifest.version ?? '0.0.0';
+		for (const localization of manifest.contributes?.localizations ?? []) {
+			if (!localization.languageId || !localization.translations?.length) {
+				continue;
+			}
+			const translations: Record<string, string> = {};
+			for (const translation of localization.translations) {
+				if (translation.id && translation.path) {
+					translations[translation.id] = join(extensionPath, translation.path);
+				}
+			}
+			languagePacks[localization.languageId.toLowerCase()] = {
+				hash: `nova-builtin-${version}`.replace(/[^\w.-]/g, '_'),
+				label: localization.localizedLanguageName ?? localization.languageName,
+				extensions: [{ extensionIdentifier: { id }, version }],
+				translations
+			};
+		}
+	}
+
+	return Object.keys(languagePacks).length ? languagePacks : undefined;
 }
 
 function resolveLanguagePackLanguage(languagePacks: ILanguagePacks, locale: string | undefined): string | undefined {
