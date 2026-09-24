@@ -17,7 +17,7 @@ import { AgentsVoiceSettingId } from '../../../agentsVoice/common/agentsVoice.js
 import { CONFIGURE_DICTATION_INSTRUCTIONS_ACTION_ID, CONFIGURE_VOICE_INSTRUCTIONS_ACTION_ID } from '../actions/configureVoiceInstructionsAction.js';
 import { DictationSettingId } from './chatSpeechToTextService.js';
 import { SHOW_DICTATION_ONBOARDING_COMMAND } from './dictationOnboarding.js';
-import { CONFIGURE_NOVA_DICTATION_COMMAND_ID } from './novaCloudTranscription.js'; // NOVA
+import { CONFIGURE_NOVA_DICTATION_COMMAND_ID, NovaDictationSettingId } from './novaCloudTranscription.js'; // NOVA
 
 /** Command that opens the microphone picker shared by dictation and Voice Mode. */
 export const SELECT_MICROPHONE_COMMAND = 'workbench.action.chat.selectSpeechToTextMicrophone';
@@ -80,7 +80,7 @@ function createShowDictationOnboardingAction(commandService: ICommandService): I
  * Checkable "Microphone Button" entry mirroring the action bar visibility toggles:
  * checked while the button is shown, unchecking it hides the button. Hiding only
  * removes the toolbar affordance — dictation can still be launched with its
- * Cmd/Ctrl+I shortcut, and the button can be restored from Settings.
+ * Alt+Q shortcut, and the button can be restored from Settings.
  */
 function createToggleButtonAction(configurationService: IConfigurationService, settingId: DictationSettingId.ShowButton | AgentsVoiceSettingId.ShowButton, id: string, label: string): IAction {
 	const shown = configurationService.getValue<boolean>(settingId) !== false;
@@ -117,6 +117,13 @@ export function getDictationContextMenuActions(commandService: ICommandService, 
 		[
 			createConfigureKeybindingAction(commandService, keybindingService, keybindingCommandId),
 			createToggleButtonAction(configurationService, DictationSettingId.ShowButton, 'chat.dictation.toggleButton', localize('dictation.microphoneButton', "Microphone Button")),
+			// NOVA
+			toAction({
+				id: 'nova.dictation.togglePushToTalk',
+				label: localize('nova.dictation.menu.pushToTalk', "Push to Talk (Hold the Shortcut, Release to Send)"),
+				checked: configurationService.getValue<boolean>(NovaDictationSettingId.PushToTalk) === true,
+				run: () => configurationService.updateValue(NovaDictationSettingId.PushToTalk, configurationService.getValue<boolean>(NovaDictationSettingId.PushToTalk) !== true),
+			}),
 			createDisableDictationAction(commandService, configurationService),
 		],
 		[

@@ -29,6 +29,7 @@ export const enum NovaDictationSettingId {
 	Provider = 'nova.dictation.provider',
 	GroqModel = 'nova.dictation.groq.model',
 	GoogleModel = 'nova.dictation.google.model',
+	PushToTalk = 'dictation.pushToTalk',
 }
 
 /** Sample rate (Hz) of the PCM16 audio produced by the dictation capture worklet. */

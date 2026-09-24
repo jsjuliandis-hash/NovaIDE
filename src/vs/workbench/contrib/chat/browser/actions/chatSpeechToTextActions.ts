@@ -13,6 +13,7 @@ import { localize, localize2 } from '../../../../../nls.js';
 import { Action2, MenuId, registerAction2 } from '../../../../../platform/actions/common/actions.js';
 import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
+import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
 import { IKeybindingService } from '../../../../../platform/keybinding/common/keybinding.js';
 import { KeybindingWeight } from '../../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { ILogService } from '../../../../../platform/log/common/log.js';
@@ -29,7 +30,7 @@ import { IChatWidgetService } from '../chat.js';
 import { ChatSpeechToTextState, DictationSettingId, IChatSpeechToTextService } from '../speechToText/chatSpeechToTextService.js';
 import { buildMicrophoneOptions, IDictationOnboardingService, RESET_DICTATION_ONBOARDING_COMMAND, SHOW_DICTATION_ONBOARDING_COMMAND } from '../speechToText/dictationOnboarding.js';
 import { cancelDictation, isDictating, startDictation, stopDictation } from '../speechToText/dictationSession.js';
-import { CONFIGURE_NOVA_DICTATION_COMMAND_ID, INovaCloudTranscriptionService } from '../speechToText/novaCloudTranscription.js'; // NOVA
+import { CONFIGURE_NOVA_DICTATION_COMMAND_ID, INovaCloudTranscriptionService, NovaDictationSettingId } from '../speechToText/novaCloudTranscription.js'; // NOVA
 
 // Gate on `ChatContextKeys.enabled` so the dictation UI and its commands are
 // hidden (not just disabled) when the user has turned AI features off; without
@@ -41,7 +42,7 @@ const ChatSpeechToTextMaiBackend = ContextKeyExpr.has(ChatContextKeys.speechToTe
 /**
  * True unless the user has hidden the chat-input dictation microphone button via
  * {@link DictationSettingId.ShowButton}. Gates only the toolbar button; the
- * Cmd/Ctrl+I dictation shortcut stays available so dictation can still be
+ * Alt+Q dictation shortcut stays available so dictation can still be
  * launched when the button is hidden.
  */
 const ChatSpeechToTextButtonShown = ContextKeyExpr.notEquals(`config.${DictationSettingId.ShowButton}`, false);
@@ -60,6 +61,12 @@ export interface IDictationShortcutContext {
 	 * nowhere to dock the card.
 	 */
 	readonly onboardingService?: IDictationOnboardingService;
+	/**
+	 * NOVA: push-to-talk. When set, the shortcut only records while it is held: a quick tap discards
+	 * the recording, and releasing after the hold threshold stops dictation and then runs `submit`
+	 * (which sends the message).
+	 */
+	readonly pushToTalk?: { readonly submit: () => Promise<void> };
 }
 
 /** Resolves a toggle invocation against the current dictation lifecycle. */
@@ -72,7 +79,7 @@ export function getDictationShortcutOperation(dictating: boolean, state: ChatSpe
 
 /**
  * Run the dictation shortcut for `editor`. Shared by the main chat input toggle
- * action and the Agents composer's Cmd/Ctrl+I command so both behave
+ * action and the Agents composer's Alt+Q command so both behave
  * identically: tapping toggles, holding is push-to-talk (release stops).
  *
  * `commandId` is the keybinding command being run; it is used to detect a held
@@ -108,6 +115,7 @@ export async function runDictationShortcut(
 	// through a held key (e.g. the toolbar mic or the command palette), which
 	// collapses the behavior to a plain toggle.
 	const holdMode = keybindingService.enableKeybindingHoldMode(commandId);
+	const pressedAt = Date.now(); // NOVA: measured before the (possibly slow) start, so a slow microphone does not turn a hold into a tap
 	await startDictationFn(speechService, editor, window, logService);
 	if (speechService.state === ChatSpeechToTextState.Recording) {
 		context.onboardingService?.refreshMicrophones(
@@ -116,6 +124,22 @@ export async function runDictationShortcut(
 		);
 	}
 	if (!holdMode) {
+		return;
+	}
+
+	// NOVA: push-to-talk. Nothing to release if recording never started (e.g. the first-use setup box was
+	// cancelled, or it stole the key release).
+	if (context.pushToTalk) {
+		if (speechService.state !== ChatSpeechToTextState.Recording) {
+			return;
+		}
+		await holdMode;
+		if (Date.now() - pressedAt < HOLD_TO_TALK_THRESHOLD_MS) {
+			cancelDictation();
+			return;
+		}
+		await stopDictation();
+		await context.pushToTalk.submit();
 		return;
 	}
 
@@ -158,7 +182,7 @@ export class ToggleChatSpeechToTextAction extends Action2 {
 			}],
 			keybinding: {
 				// Outrank the legacy "Start Voice Chat" action, which binds the
-				// same Cmd+I in the chat input at WorkbenchContrib weight. When
+				// same Ctrl+I in the chat input at WorkbenchContrib weight. When
 				// dictation is configured it should win the chord.
 				weight: KeybindingWeight.WorkbenchContrib + 1,
 				// Dedicated chord scoped to the chat input. Kept distinct from
@@ -169,7 +193,7 @@ export class ToggleChatSpeechToTextAction extends Action2 {
 					EditorContextKeys.focus.negate(),
 					NOTEBOOK_EDITOR_FOCUSED.negate(),
 				),
-				primary: KeyMod.CtrlCmd | KeyCode.KeyI,
+				primary: KeyMod.Alt | KeyCode.KeyQ, // NOVA: was Ctrl+I
 			},
 		});
 	}
@@ -183,11 +207,17 @@ export class ToggleChatSpeechToTextAction extends Action2 {
 			return;
 		}
 
+		// NOVA: with push-to-talk on, releasing the shortcut sends whatever was dictated.
+		const pushToTalk = accessor.get(IConfigurationService).getValue<boolean>(NovaDictationSettingId.PushToTalk) === true
+			? { submit: async () => { if (widget.getInput().trim()) { await widget.acceptInput(); } } }
+			: undefined;
+
 		await runDictationShortcut({
 			speechService: accessor.get(IChatSpeechToTextService),
 			keybindingService: accessor.get(IKeybindingService),
 			logService: accessor.get(ILogService),
 			onboardingService: accessor.get(IDictationOnboardingService),
+			pushToTalk,
 		}, ToggleChatSpeechToTextAction.ID, widget.inputEditor);
 	}
 }

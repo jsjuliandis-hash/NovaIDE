@@ -75,6 +75,7 @@ export const novaTranslations: Readonly<Record<string, Readonly<Record<string, R
 		},
 		'vs/workbench/contrib/chat/browser/speechToText/micButtonMenuActions': {
 			'nova.dictation.menu.configure': 'Configurar Ditado (Provedor e Chave de API)',
+			'nova.dictation.menu.pushToTalk': 'Apertar para Falar (Segure o Atalho, Solte para Enviar)',
 		},
 		'vs/workbench/contrib/chat/browser/speechToText/micButtonHovers': {
 			'dictation.hover.novaCloud': 'Digita o que você fala no campo. Transcreve na nuvem com {0}, usando sua chave de API. Use a engrenagem para mudar.',

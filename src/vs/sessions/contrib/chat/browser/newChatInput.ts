@@ -119,6 +119,7 @@ import { ChatVoiceInputModeAction, VoiceInputModeActionViewItem } from '../../..
 import { IVoiceInputModeService } from '../../../../workbench/contrib/chat/browser/voiceInputMode/voiceInputMode.js';
 import { Separator, toAction } from '../../../../base/common/actions.js';
 import { runDictationShortcut } from '../../../../workbench/contrib/chat/browser/actions/chatSpeechToTextActions.js';
+import { NovaDictationSettingId } from '../../../../workbench/contrib/chat/browser/speechToText/novaCloudTranscription.js'; // NOVA
 import { isDictationActiveForEditor, notifyDictationSubmitted, onDidChangeDictationEditor } from '../../../../workbench/contrib/chat/browser/speechToText/dictationSession.js';
 import { combineVoiceInput } from '../../../../workbench/contrib/chat/browser/voiceClient/voiceInputUtils.js';
 import { ChatContextKeys } from '../../../../workbench/contrib/chat/common/actions/chatContextKeys.js';
@@ -197,7 +198,7 @@ KeybindingsRegistry.registerCommandAndKeybindingRule({
 		SessionsChatInputHasDictationFocus,
 		ContextKeyExpr.has(ChatContextKeys.speechToTextConfigured.key),
 	),
-	primary: KeyMod.CtrlCmd | KeyCode.KeyI,
+	primary: KeyMod.Alt | KeyCode.KeyQ, // NOVA: was Ctrl+I
 	handler: () => activeDictationComposer?.toggleDictation(),
 });
 
@@ -1571,7 +1572,7 @@ export class NewChatInputWidget extends Disposable implements IHistoryNavigation
 
 	/**
 	 * Toggle dictation into this composer's editor. Shared by the mic button and
-	 * the Cmd/Ctrl+I chord ({@link TOGGLE_DICTATION_COMMAND_ID}); the shared
+	 * the Alt+Q chord ({@link TOGGLE_DICTATION_COMMAND_ID}); the shared
 	 * Dictate action can't target this composer since it isn't an `IChatWidget`.
 	 */
 	async toggleDictation(): Promise<void> {
@@ -1583,6 +1584,10 @@ export class NewChatInputWidget extends Disposable implements IHistoryNavigation
 			keybindingService: this.keybindingService,
 			logService: this.logService,
 			onboardingService: this.dictationOnboardingService,
+			// NOVA: push to talk sends the composer's message when the shortcut is released.
+			pushToTalk: this.configurationService.getValue<boolean>(NovaDictationSettingId.PushToTalk) === true
+				? { submit: async () => { if (this._editor?.getModel()?.getValue().trim()) { await this._send(); } } }
+				: undefined,
 		}, TOGGLE_DICTATION_COMMAND_ID, this._editor);
 	}
 

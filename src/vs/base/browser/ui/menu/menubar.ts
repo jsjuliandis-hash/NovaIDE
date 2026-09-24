@@ -181,7 +181,7 @@ export class MenuBar extends Disposable {
 		}));
 
 		this._register(DOM.addDisposableListener(window, DOM.EventType.KEY_DOWN, (e: KeyboardEvent) => {
-			if (!this.options.enableMnemonics || !e.altKey || e.ctrlKey || e.defaultPrevented) {
+			if (!this.options.enableMnemonics || !e.altKey || e.ctrlKey || e.defaultPrevented || DOM.ModifierKeyEmitter.getInstance().isLeftAltOnly) { // NOVA: the left Alt is reserved for the microphone
 				return;
 			}
 

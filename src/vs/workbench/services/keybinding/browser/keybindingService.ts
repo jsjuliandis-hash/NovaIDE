@@ -172,6 +172,25 @@ otherMacNumpadMapping.set(ScanCode.Numpad8, KeyCode.Digit8);
 otherMacNumpadMapping.set(ScanCode.Numpad9, KeyCode.Digit9);
 otherMacNumpadMapping.set(ScanCode.Numpad0, KeyCode.Digit0);
 
+/**
+ * NOVA: the left Alt key is reserved for the microphone shortcut (Alt+Q). This returns true for a
+ * keydown that would run an Alt shortcut with the wrong Alt: any Alt shortcut other than Alt+Q
+ * pressed with the left Alt, and Alt+Q pressed with the right Alt. The right Alt (AltGr on some
+ * layouts) is the Alt for everything else. When both or neither Alt key is known to be down the
+ * event is left alone.
+ */
+function isAltShortcutOnWrongAlt(event: StandardKeyboardEvent): boolean {
+	if (!event.altKey || event.keyCode === KeyCode.Alt) {
+		return false;
+	}
+	const modifiers = dom.ModifierKeyEmitter.getInstance();
+	if (!modifiers.isLeftAltOnly && !modifiers.isRightAltOnly) {
+		return false;
+	}
+	const isMicrophoneShortcut = event.keyCode === KeyCode.KeyQ && !event.ctrlKey && !event.metaKey;
+	return isMicrophoneShortcut ? !modifiers.isLeftAltOnly : modifiers.isLeftAltOnly;
+}
+
 export class WorkbenchKeybindingService extends AbstractKeybindingService {
 
 	private _keyboardMapper: IKeyboardMapper;
@@ -201,6 +220,7 @@ export class WorkbenchKeybindingService extends AbstractKeybindingService {
 		super(contextKeyService, commandService, telemetryService, notificationService, logService);
 
 		this.isComposingGlobalContextKey = contextKeyService.createKey(EditorContextKeys.isComposing.key, false);
+		dom.ModifierKeyEmitter.getInstance(); // NOVA: start tracking which Alt key (left/right) is down
 
 		this.kbsJsonSchema = new KeybindingsJsonSchema();
 		this.updateKeybindingsJsonSchema();
@@ -281,6 +301,12 @@ export class WorkbenchKeybindingService extends AbstractKeybindingService {
 			}
 			this.isComposingGlobalContextKey.set(e.isComposing);
 			const keyEvent = new StandardKeyboardEvent(e);
+			// NOVA: the left Alt is reserved for the microphone (Alt+Q); every other Alt shortcut needs the right Alt.
+			if (isAltShortcutOnWrongAlt(keyEvent)) {
+				this._log(`| Ignored keydown event, wrong Alt key - ${printKeyboardEvent(e)}`);
+				this.isComposingGlobalContextKey.set(false);
+				return;
+			}
 			this._log(`/ Received  keydown event - ${printKeyboardEvent(e)}`);
 			this._log(`| Converted keydown event - ${printStandardKeyboardEvent(keyEvent)}`);
 			const shouldPreventDefault = this._dispatch(keyEvent, keyEvent.target);

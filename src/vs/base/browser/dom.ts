@@ -1897,6 +1897,11 @@ export class ModifierKeyEmitter extends event.Emitter<IModifierKeyStatus> {
 	private _keyStatus: IModifierKeyStatus;
 	private static instance: ModifierKeyEmitter | undefined;
 
+	// NOVA: which Alt keys are physically down. The left Alt is reserved for the microphone (Alt+Q), so
+	// `keyStatus.altKey` only reports Alt while the RIGHT Alt is held; every other Alt shortcut uses it.
+	private _leftAltDown = false;
+	private _rightAltDown = false;
+
 	private constructor() {
 		super();
 
@@ -1912,10 +1917,12 @@ export class ModifierKeyEmitter extends event.Emitter<IModifierKeyStatus> {
 
 	private registerListeners(window: Window, disposables: DisposableStore): void {
 		disposables.add(addDisposableListener(window, 'keydown', e => {
+			this.trackAltKeys(e, true);
 			if (e.defaultPrevented) {
 				return;
 			}
 
+			const altKey = this.isAltKeyForShortcuts(e); // NOVA
 			const event = new StandardKeyboardEvent(e);
 			// If Alt-key keydown event is repeated, ignore it #112347
 			// Only known to be necessary for Alt-Key at the moment #115810
@@ -1923,7 +1930,7 @@ export class ModifierKeyEmitter extends event.Emitter<IModifierKeyStatus> {
 				return;
 			}
 
-			if (e.altKey && !this._keyStatus.altKey) {
+			if (altKey && !this._keyStatus.altKey) {
 				this._keyStatus.lastKeyPressed = 'alt';
 			} else if (e.ctrlKey && !this._keyStatus.ctrlKey) {
 				this._keyStatus.lastKeyPressed = 'ctrl';
@@ -1937,7 +1944,7 @@ export class ModifierKeyEmitter extends event.Emitter<IModifierKeyStatus> {
 				return;
 			}
 
-			this._keyStatus.altKey = e.altKey;
+			this._keyStatus.altKey = altKey;
 			this._keyStatus.ctrlKey = e.ctrlKey;
 			this._keyStatus.metaKey = e.metaKey;
 			this._keyStatus.shiftKey = e.shiftKey;
@@ -1949,11 +1956,13 @@ export class ModifierKeyEmitter extends event.Emitter<IModifierKeyStatus> {
 		}, true));
 
 		disposables.add(addDisposableListener(window, 'keyup', e => {
+			this.trackAltKeys(e, false);
 			if (e.defaultPrevented) {
 				return;
 			}
 
-			if (!e.altKey && this._keyStatus.altKey) {
+			const altKey = this.isAltKeyForShortcuts(e); // NOVA
+			if (!altKey && this._keyStatus.altKey) {
 				this._keyStatus.lastKeyReleased = 'alt';
 			} else if (!e.ctrlKey && this._keyStatus.ctrlKey) {
 				this._keyStatus.lastKeyReleased = 'ctrl';
@@ -1969,7 +1978,7 @@ export class ModifierKeyEmitter extends event.Emitter<IModifierKeyStatus> {
 				this._keyStatus.lastKeyPressed = undefined;
 			}
 
-			this._keyStatus.altKey = e.altKey;
+			this._keyStatus.altKey = altKey;
 			this._keyStatus.ctrlKey = e.ctrlKey;
 			this._keyStatus.metaKey = e.metaKey;
 			this._keyStatus.shiftKey = e.shiftKey;
@@ -1999,6 +2008,37 @@ export class ModifierKeyEmitter extends event.Emitter<IModifierKeyStatus> {
 		}));
 	}
 
+	/** NOVA: remembers which Alt key (left or right) is down, from the `code` of Alt key events. */
+	private trackAltKeys(e: KeyboardEvent, down: boolean): void {
+		if (e.code === 'AltLeft') {
+			this._leftAltDown = down;
+		} else if (e.code === 'AltRight') {
+			this._rightAltDown = down;
+		}
+		if (!e.altKey) {
+			this._leftAltDown = false;
+			this._rightAltDown = false;
+		}
+	}
+
+	/** NOVA: an event counts as "Alt held" for shortcuts unless only the (microphone) left Alt is down. */
+	private isAltKeyForShortcuts(e: KeyboardEvent): boolean {
+		return e.altKey && !this.isLeftAltOnly;
+	}
+
+	/**
+	 * NOVA: true while the left Alt is down and the right Alt is not. That Alt is reserved for the
+	 * microphone shortcut (Alt+Q). `false` when it is unknown which Alt is down.
+	 */
+	get isLeftAltOnly(): boolean {
+		return this._leftAltDown && !this._rightAltDown;
+	}
+
+	/** NOVA: true while the right Alt is down and the left Alt is not. */
+	get isRightAltOnly(): boolean {
+		return this._rightAltDown && !this._leftAltDown;
+	}
+
 	get keyStatus(): IModifierKeyStatus {
 		return this._keyStatus;
 	}
@@ -2016,6 +2056,8 @@ export class ModifierKeyEmitter extends event.Emitter<IModifierKeyStatus> {
 	}
 
 	private doResetKeyStatus(): void {
+		this._leftAltDown = false;
+		this._rightAltDown = false;
 		this._keyStatus = {
 			altKey: false,
 			shiftKey: false,

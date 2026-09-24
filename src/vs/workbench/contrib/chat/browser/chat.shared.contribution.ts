@@ -416,6 +416,11 @@ configurationRegistry.registerConfiguration({
 			],
 			markdownDescription: nls.localize('nova.dictation.provider', "Cloud provider used for dictation when `#dictation.model#` is set to your own API key. Use the gear button next to the microphone to change it."),
 		},
+		[NovaDictationSettingId.PushToTalk]: {
+			type: 'boolean',
+			default: false,
+			markdownDescription: nls.localize('nova.dictation.pushToTalk', "Push to talk. When on, hold the dictation shortcut (`Alt+Q` in the chat input) to record and release it to send the message straight to the chat. A quick tap records nothing. When off, tap the shortcut to start and stop dictation."),
+		},
 		[NovaDictationSettingId.GroqModel]: {
 			type: 'string',
 			default: 'whisper-large-v3-turbo',

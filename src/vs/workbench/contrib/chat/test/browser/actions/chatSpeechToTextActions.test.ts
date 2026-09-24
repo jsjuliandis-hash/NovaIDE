@@ -116,4 +116,45 @@ suite('Chat Speech to Text Actions', () => {
 
 		assert.deepStrictEqual(calls, ['showIfNeeded', 'startDictation', 'refreshMicrophones:true', 'switchMicrophone:mic-b']);
 	});
+
+	// NOVA
+	async function runPushToTalk(holdMs: number, recording = true): Promise<string[]> {
+		const calls: string[] = [];
+		let state = ChatSpeechToTextState.Idle;
+		const speechService = new class extends mock<IChatSpeechToTextService>() {
+			override get state(): ChatSpeechToTextState { return state; }
+			override readonly isPreparingModel = false;
+		};
+		const keybindingService = new class extends mock<IKeybindingService>() {
+			override enableKeybindingHoldMode(): Promise<void> | undefined {
+				return new Promise<void>(resolve => setTimeout(resolve, holdMs));
+			}
+		};
+		const editor = new class extends mock<ICodeEditor>() {
+			override getDomNode(): HTMLElement {
+				return mainWindow.document.body;
+			}
+		};
+		await runDictationShortcut(
+			{ speechService, keybindingService, logService: new NullLogService(), pushToTalk: { submit: async () => { calls.push('submit'); } } },
+			'test.dictation',
+			editor,
+			async () => {
+				calls.push('startDictation');
+				state = recording ? ChatSpeechToTextState.Recording : ChatSpeechToTextState.Idle;
+			},
+		);
+		return calls;
+	}
+
+	test('push to talk sends the message when the shortcut is released after a hold', async () => {
+		assert.deepStrictEqual(await runPushToTalk(600), ['startDictation', 'submit']);
+	});
+
+	test('push to talk ignores a quick tap and a start that never recorded', async () => {
+		assert.deepStrictEqual(
+			[await runPushToTalk(0), await runPushToTalk(600, false)],
+			[['startDictation'], ['startDictation']],
+		);
+	});
 });
