@@ -134,6 +134,13 @@ export const novaTranslations: Readonly<Record<string, Readonly<Record<string, R
 			'nova.tts.autoSpeakOn': 'As respostas deste chat agora são lidas em voz alta automaticamente.',
 			'nova.tts.autoSpeakOff': 'As respostas deste chat não são mais lidas em voz alta automaticamente.',
 		},
+		'vs/platform/novaDonation/electron-main/novaDonationMainService': {
+			'nova.donation.title': 'Apoie a Nova IDE',
+		},
+		'vs/workbench/contrib/novaDonation/electron-browser/novaDonation.contribution': {
+			'nova.donation.showOnStartup': 'Mostrar o convite para apoiar a Nova IDE com uma doação (Live Pix) ao abrir o aplicativo. O comando **Apoiar a Nova IDE** abre o convite a qualquer momento.',
+			'nova.donation.show': 'Apoiar a Nova IDE',
+		},
 		'vs/workbench/contrib/chat/browser/chat.shared.contribution': {
 			'nova.tts.provider.piper': 'Piper: local, offline e grátis. Baixa a voz uma vez.',
 			'nova.tts.provider.azure': 'Microsoft Azure Speech (sua própria chave).',

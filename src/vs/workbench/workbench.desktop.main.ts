@@ -188,6 +188,8 @@ import './contrib/remoteTunnel/electron-browser/remoteTunnel.contribution.js';
 // Chat
 import './contrib/chat/electron-browser/chat.contribution.js';
 import '../platform/novaTts/electron-browser/novaTts.js'; // NOVA
+import '../platform/novaDonation/electron-browser/novaDonation.js'; // NOVA
+import './contrib/novaDonation/electron-browser/novaDonation.contribution.js'; // NOVA
 import './contrib/chat/electron-browser/tunnelHost.contribution.js';
 
 // Copilot Voice

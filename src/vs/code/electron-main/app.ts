@@ -49,6 +49,7 @@ import { IExtensionHostStarter, ipcExtensionHostStarterChannelName } from '../..
 import { ExtensionHostStarter } from '../../platform/extensions/electron-main/extensionHostStarter.js';
 import { IExternalTerminalMainService } from '../../platform/externalTerminal/electron-main/externalTerminal.js';
 import { INovaTtsMainService, NovaTtsMainService } from '../../platform/novaTts/electron-main/novaTtsMainService.js'; // NOVA
+import { INovaDonationMainService, NovaDonationMainService } from '../../platform/novaDonation/electron-main/novaDonationMainService.js'; // NOVA
 import { LinuxExternalTerminalService, MacExternalTerminalService, WindowsExternalTerminalService } from '../../platform/externalTerminal/node/externalTerminalService.js';
 import { ISandboxHelperMainService } from '../../platform/sandbox/electron-main/sandboxHelperService.js';
 import { SandboxHelperService } from '../../platform/sandbox/node/sandboxHelper.js';
@@ -580,6 +581,15 @@ export class CodeApplication extends Disposable {
 			contents.on('will-navigate', event => {
 				if (BrowserViewMainService.isBrowserViewWebContents(contents)) {
 					return; // Allow navigation in integrated browser views
+				}
+
+				// NOVA: the donation popup may move within Live Pix; any other page opens in the system browser
+				if (NovaDonationMainService.isDonationWebContents(contents)) {
+					if (!NovaDonationMainService.isAllowedNavigation(event.url)) {
+						event.preventDefault();
+						this.nativeHostMainService?.openExternal(undefined, event.url);
+					}
+					return;
 				}
 
 				this.logService.error('webContents#will-navigate: Prevented webcontent navigation');
@@ -1293,6 +1303,9 @@ export class CodeApplication extends Disposable {
 		// Text to speech (NOVA)
 		services.set(INovaTtsMainService, new SyncDescriptor(NovaTtsMainService));
 
+		// Donation popup (NOVA)
+		services.set(INovaDonationMainService, new SyncDescriptor(NovaDonationMainService));
+
 		// Backups
 		const backupMainService = new BackupMainService(this.environmentMainService, this.configurationService, this.logService, this.stateService);
 		services.set(IBackupMainService, backupMainService);
@@ -1472,6 +1485,10 @@ export class CodeApplication extends Disposable {
 		// Text to speech (NOVA)
 		const novaTtsChannel = ProxyChannel.fromService(accessor.get(INovaTtsMainService), disposables);
 		mainProcessElectronServer.registerChannel('novaTts', novaTtsChannel);
+
+		// Donation popup (NOVA)
+		const novaDonationChannel = ProxyChannel.fromService(accessor.get(INovaDonationMainService), disposables);
+		mainProcessElectronServer.registerChannel('novaDonation', novaDonationChannel);
 
 		// Sandbox Helper
 		const sandboxHelperChannel = ProxyChannel.fromService(accessor.get(ISandboxHelperMainService), disposables);
