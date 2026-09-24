@@ -22,6 +22,7 @@ import { status } from '../../../base/browser/ui/aria/aria.js';
 import { HoverStyle, type IHoverOptions, type IHoverTarget, type IHoverWidget } from '../../../base/browser/ui/hover/hover.js';
 import { TimeoutTimer } from '../../../base/common/async.js';
 import { isNumber } from '../../../base/common/types.js';
+import { getWCOTitlebarAreaRect, isWCOEnabled } from '../../../base/browser/browser.js';
 
 const $ = dom.$;
 type TargetRect = {
@@ -592,6 +593,11 @@ export class HoverWidget extends Widget implements IHoverWidget {
 			if (target.top - this._hover.containerDomNode.clientHeight - hoverPointerOffset < 0) {
 				this._hoverPosition = HoverPosition.BELOW;
 			}
+			// NOVA: the native window controls (minimize/maximize/close) are drawn above the page,
+			// so a hover going up into them would be hidden behind them
+			else if (target.top - this._hover.containerDomNode.clientHeight - hoverPointerOffset < this.windowControlsOverlayBottom(target)) {
+				this._hoverPosition = HoverPosition.BELOW;
+			}
 		}
 
 		// Position hover below the target
@@ -601,6 +607,30 @@ export class HoverWidget extends Widget implements IHoverWidget {
 				this._hoverPosition = HoverPosition.ABOVE;
 			}
 		}
+	}
+
+	/**
+	 * NOVA: bottom edge of the native window controls when a hover placed above
+	 * `target` could overlap them horizontally, otherwise 0.
+	 */
+	private windowControlsOverlayBottom(target: TargetRect): number {
+		if (!isWCOEnabled()) {
+			return 0;
+		}
+		const titlebarArea = getWCOTitlebarAreaRect(this._targetWindow);
+		if (!titlebarArea || titlebarArea.height <= 0) {
+			return 0;
+		}
+
+		// The horizontal position is computed later, so consider every place the hover may end up
+		const hoverWidth = this._hover.containerDomNode.clientWidth + Constants.HoverBorderWidth;
+		const hoverLeft = Math.min(target.left, target.right - hoverWidth, target.center.x - hoverWidth / 2);
+		const hoverRight = Math.max(target.right, target.left + hoverWidth, target.center.x + hoverWidth / 2);
+
+		// The controls occupy the part of the title bar that is not available to the page
+		const overlapsLeftControls = titlebarArea.left > 0 && hoverLeft < titlebarArea.left;
+		const overlapsRightControls = titlebarArea.right < this._targetWindow.innerWidth && hoverRight > titlebarArea.right;
+		return overlapsLeftControls || overlapsRightControls ? titlebarArea.top + titlebarArea.height : 0;
 	}
 
 	private adjustHoverMaxHeight(target: TargetRect): void {
