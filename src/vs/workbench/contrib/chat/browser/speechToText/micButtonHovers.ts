@@ -36,7 +36,13 @@ function asHoverContent(title: string, description: string): IManagedHoverConten
 function getDictationDescription(configurationService: IConfigurationService, web: boolean): string {
 	const modelId = configurationService.getValue<string>(DICTATION_MODEL_SETTING)?.trim();
 	const policyModelId = configurationService.inspect<string>(DICTATION_MODEL_SETTING).policyValue?.trim();
-	if (resolveDictationBackend(modelId, policyModelId, web) === 'mai') {
+	const backend = resolveDictationBackend(modelId, policyModelId, web);
+	// NOVA
+	if (backend === 'nova') {
+		const provider = configurationService.getValue<string>('nova.dictation.provider');
+		return localize('dictation.hover.novaCloud', "Types what you say into the input. Transcribes in the cloud with {0}, using your API key. Use the gear to change it.", provider === 'google' ? 'Google Gemini' : 'Groq Whisper');
+	}
+	if (backend === 'mai') {
 		return localize('dictation.hover.cloud', "Types what you say into the input. Transcribes in the cloud with the MAI speech model.");
 	}
 	if (!modelId || modelId === DEFAULT_LOCAL_TRANSCRIPTION_MODEL) {

@@ -138,6 +138,7 @@ import { ChatSubmitRequestHandlerService, IChatSubmitRequestHandlerService } fro
 import { PromptsDebugContribution } from './promptsDebugContribution.js';
 import { PromptLanguageFeaturesProvider } from './promptSyntax/promptFileContributions.js';
 import { ChatSpeechToTextService, DICTATION_MAI_MODEL_ID, DictationSettingId, IChatSpeechToTextService } from './speechToText/chatSpeechToTextService.js';
+import { DICTATION_NOVA_CLOUD_MODEL_ID, NovaDictationSettingId } from './speechToText/novaCloudTranscription.js'; // NOVA
 import { IVoiceCodeTranscriptionClient, VoiceCodeTranscriptionClient } from './speechToText/voiceCodeTranscriptionClient.js';
 import './telemetry/chatEditorTopologyTelemetry.js';
 import './telemetry/chatModelCountTelemetry.js';
@@ -363,17 +364,20 @@ configurationRegistry.registerConfiguration({
 			enum: [
 				DEFAULT_LOCAL_TRANSCRIPTION_MODEL,
 				DICTATION_MAI_MODEL_ID,
+				DICTATION_NOVA_CLOUD_MODEL_ID, // NOVA
 			],
 			enumItemLabels: [
 				nls.localize('dictation.model.nemotronMultilingual.label', "Nemotron 3.5 ASR (Multilingual) — On-Device"),
 				nls.localize('dictation.model.mai.label', "MAI — Cloud"),
+				nls.localize('dictation.model.novaCloud.label', "Groq / Gemini — Your API Key"), // NOVA
 			],
 			markdownEnumDescriptions: [
 				nls.localize('dictation.model.nemotronMultilingual', "NVIDIA Nemotron 3.5 multilingual streaming RNN-T, run on-device through Microsoft Foundry Local. Works offline; no audio leaves the device. Automatic language selection follows the Voice Mode language setting; when that setting is Automatic, dictation uses the configured display language when supported, then the system or browser locale, with model detection as a fallback. Downloaded on first use and cached on disk."),
 				nls.localize('dictation.model.mai', "Cloud transcription through the same Microsoft AI voice service used by Voice Mode. Requires a network connection and GitHub sign-in; audio is streamed to the service."),
+				nls.localize('dictation.model.novaCloud', "Cloud transcription with your own free API key from Groq (Whisper) or Google (Gemini). Asked on first use of the microphone; change it any time with the gear button next to it. The recording is sent when you stop dictating."), // NOVA
 			],
 			markdownDescription: nls.localize('dictation.model', "The model used for dictation. On-device models download on first use and run locally through Microsoft Foundry Local; the cloud option streams audio to the Microsoft AI voice service. On the web, user and default on-device selections use cloud transcription because local transcription is unsupported. If policy requires on-device transcription, dictation is unavailable on the web."),
-			default: isWeb ? DICTATION_MAI_MODEL_ID : DEFAULT_LOCAL_TRANSCRIPTION_MODEL,
+			default: isWeb ? DICTATION_MAI_MODEL_ID : DICTATION_NOVA_CLOUD_MODEL_ID, // NOVA: asks for an API key on first use
 			tags: ['experimental'],
 			experiment: { mode: 'auto' },
 			policy: {
@@ -394,9 +398,33 @@ configurationRegistry.registerConfiguration({
 							key: 'dictation.model.mai.policy',
 							value: nls.localize('dictation.model.mai.policy', "Use the cloud transcription service. Audio is streamed to the service.")
 						},
+						{
+							key: 'dictation.model.novaCloud.policy', // NOVA
+							value: nls.localize('dictation.model.novaCloud.policy', "Use cloud transcription with the user's own API key. Audio is sent to the chosen provider.")
+						},
 					]
 				},
 			}
+		},
+		// NOVA: cloud dictation provider and models. The API key itself lives in the secret storage, never in settings.
+		[NovaDictationSettingId.Provider]: {
+			type: 'string',
+			enum: ['groq', 'google'],
+			enumDescriptions: [
+				nls.localize('nova.dictation.provider.groq', "Groq (Whisper)."),
+				nls.localize('nova.dictation.provider.google', "Google (Gemini)."),
+			],
+			markdownDescription: nls.localize('nova.dictation.provider', "Cloud provider used for dictation when `#dictation.model#` is set to your own API key. Use the gear button next to the microphone to change it."),
+		},
+		[NovaDictationSettingId.GroqModel]: {
+			type: 'string',
+			default: 'whisper-large-v3-turbo',
+			markdownDescription: nls.localize('nova.dictation.groqModel', "Groq speech model used for dictation, for example `whisper-large-v3-turbo` (faster) or `whisper-large-v3` (more accurate)."),
+		},
+		[NovaDictationSettingId.GoogleModel]: {
+			type: 'string',
+			default: 'gemini-flash-latest',
+			markdownDescription: nls.localize('nova.dictation.googleModel', "Gemini model used for dictation."),
 		},
 		[DictationSettingId.ShowTranscript]: {
 			type: 'boolean',

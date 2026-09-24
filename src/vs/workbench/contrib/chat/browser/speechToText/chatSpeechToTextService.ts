@@ -39,6 +39,8 @@ import { resolveDictationLanguage } from './dictationLanguage.js';
 import { ChatEntitlement, IChatEntitlementService } from '../../../../services/chat/common/chatEntitlementService.js';
 import { IVoiceCodeTranscription, IVoiceCodeTranscriptionClient } from './voiceCodeTranscriptionClient.js';
 import { getTranscriptionWebSocketUrl } from '../voiceClient/voiceEndpoint.js';
+// NOVA
+import { DICTATION_NOVA_CLOUD_MODEL_ID, CONFIGURE_NOVA_DICTATION_COMMAND_ID, INovaCloudTranscriptionService, isSilentPcm16, NovaCloudTranscriptionError, toIsoLanguageCode } from './novaCloudTranscription.js';
 
 export const IChatSpeechToTextService = createDecorator<IChatSpeechToTextService>('chatSpeechToTextService');
 
@@ -152,7 +154,8 @@ type DictationCleanupModel = 'none' | 'copilot-utility-small' | 'gpt-5.6-luna';
  * - `nemo`: an on-device model via {@link ILocalTranscriptionService} (Foundry Local).
  * - `mai`: the cloud transcription service.
  */
-type DictationBackend = 'nemo' | 'mai';
+// NOVA: `nova` sends the whole recording to the user's own Groq/Gemini API key when dictation stops.
+type DictationBackend = 'nemo' | 'mai' | 'nova';
 
 type BackendFinalizationResult = {
 	readonly text: string | undefined;
@@ -165,7 +168,14 @@ export function isDictationEntitled(entitlement: ChatEntitlement, isInternal: bo
 
 export function resolveDictationBackend(configuredModel: string | undefined, policyModel: string | undefined, web: boolean): DictationBackend {
 	const model = policyModel ?? configuredModel;
-	return (web && policyModel === undefined) || model === DICTATION_MAI_MODEL_ID ? 'mai' : 'nemo';
+	if (web && policyModel === undefined) {
+		return 'mai';
+	}
+	// NOVA
+	if (model === DICTATION_NOVA_CLOUD_MODEL_ID) {
+		return 'nova';
+	}
+	return model === DICTATION_MAI_MODEL_ID ? 'mai' : 'nemo';
 }
 
 /** How long to wait after `ptt_end` for the backend's final transcript before returning what we have. */
@@ -487,6 +497,11 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 	private _maiFinalTranscript: DeferredPromise<void> | undefined;
 	private _maiReceivedFinal = false;
 
+	// --- NOVA: cloud transcription with the user's own API key. The recording is buffered and sent once, on stop. ---
+	private _novaChunks: VSBuffer[] = [];
+	private _novaLanguage: string | undefined;
+	private _novaCts: CancellationTokenSource | undefined;
+
 	get isConfigured(): boolean {
 		if (this._configurationService.getValue<boolean>(ENABLED_SETTING) === false) {
 			return false;
@@ -497,6 +512,10 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 		}
 		if (backend === 'mai') {
 			return !!this._transcriptionWsUrl() && this._hasGitHubSession;
+		}
+		// NOVA: the mic is always available; the setup box opens on first use.
+		if (backend === 'nova') {
+			return true;
 		}
 		// On-device transcription needs no configuration — the model downloads
 		// on first use. It is only unavailable where the platform lacks native
@@ -562,6 +581,7 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 		@ILanguageModelsService private readonly _languageModelsService: ILanguageModelsService,
 		@IPromptsService private readonly _promptsService: IPromptsService,
 		@IChatEntitlementService private readonly _chatEntitlementService: IChatEntitlementService,
+		@INovaCloudTranscriptionService private readonly _novaCloud: INovaCloudTranscriptionService, // NOVA
 	) {
 		super();
 		this._recordingContextKey = ChatContextKeys.speechToTextRecording.bindTo(contextKeyService);
@@ -801,7 +821,17 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 	}
 
 	private async _start(window: Window & typeof globalThis, surface: ChatDictationSurface, generation: number): Promise<void> {
-		const backend = this._getBackend();
+		let backend = this._getBackend();
+		// NOVA: first use asks for a provider and API key. Cancelling leaves dictation off, without an error.
+		if (backend === 'nova') {
+			const setup = await this._novaCloud.ensureConfigured();
+			if (generation !== this._sessionGeneration || setup === 'cancelled') {
+				return;
+			}
+			if (setup === 'local') {
+				backend = this._getBackend();
+			}
+		}
 		this._activeBackend = backend;
 
 		if (!this._isEntitledForBackend(backend)) {
@@ -941,6 +971,15 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 	private async _startBackendSession(window: Window & typeof globalThis, generation: number): Promise<void> {
 		if (this._activeBackend === 'mai') {
 			return this._startMaiSession(window, generation);
+		}
+		// NOVA
+		if (this._activeBackend === 'nova') {
+			this._novaChunks = [];
+			this._novaLanguage = toIsoLanguageCode(resolveDictationLanguage(
+				this._configurationService.getValue('agents.voice.language'),
+				window.navigator.language,
+			));
+			return;
 		}
 		return this._startLocalSession(window, generation);
 	}
@@ -1319,7 +1358,7 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 			if (generation !== this._sessionGeneration) {
 				return undefined;
 			}
-			hasAuthoritativeFinal = this._activeBackend === 'mai' && this._maiReceivedFinal;
+			hasAuthoritativeFinal = (this._activeBackend === 'mai' && this._maiReceivedFinal) || this._activeBackend === 'nova'; // NOVA: the API answer is the final text
 			text = hasAuthoritativeFinal
 				? selectAuthoritativeDictationTranscript(liveTranscript, finalization.text)
 				: selectFinalDictationTranscript(
@@ -1534,6 +1573,10 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 	 * short wait for the backend's final `transcription`.
 	 */
 	private async _finishBackend(): Promise<BackendFinalizationResult> {
+		// NOVA
+		if (this._activeBackend === 'nova') {
+			return this._finishNovaSession();
+		}
 		if (this._activeBackend === 'mai') {
 			const finalTranscript = this._maiFinalTranscript = new DeferredPromise<void>();
 			this._transcriptionClient.sendPttEnd(this._maiTurnId);
@@ -1569,6 +1612,51 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 		return { text: this._transcript, timedOut: true };
 	}
 
+	/** NOVA: send the buffered recording to the selected provider and return its transcript. */
+	private async _finishNovaSession(): Promise<BackendFinalizationResult> {
+		const chunks = this._novaChunks;
+		this._novaChunks = [];
+		const pcm = VSBuffer.concat(chunks).buffer;
+		if (isSilentPcm16(pcm)) {
+			return { text: '', timedOut: false };
+		}
+		const cts = this._novaCts = new CancellationTokenSource();
+		try {
+			return { text: await this._novaCloud.transcribe(pcm, this._novaLanguage, cts.token), timedOut: false };
+		} catch (err) {
+			if (!cts.token.isCancellationRequested) {
+				this._sessionErrorCode = this._sessionErrorCode || 'transcribe.cloud';
+				this._reportNovaError(err);
+			}
+			return { text: '', timedOut: false };
+		} finally {
+			if (this._novaCts === cts) {
+				this._novaCts = undefined;
+			}
+			cts.dispose();
+		}
+	}
+
+	private _reportNovaError(err: unknown): void {
+		this._logService.error('[chat-stt] cloud transcription failed', err);
+		const message = toErrorMessage(err);
+		if (err instanceof NovaCloudTranscriptionError && err.kind === 'auth') {
+			this._notificationService.notify({
+				severity: Severity.Error,
+				message,
+				actions: {
+					primary: [toAction({
+						id: CONFIGURE_NOVA_DICTATION_COMMAND_ID,
+						label: localize('nova.dictation.reconfigure', "Configure Dictation"),
+						run: () => this._commandService.executeCommand(CONFIGURE_NOVA_DICTATION_COMMAND_ID),
+					})]
+				},
+			});
+			return;
+		}
+		this._notificationService.error(message);
+	}
+
 	async cancel(): Promise<void> {
 		const pendingStart = this._pendingStart;
 		const pendingStop = this._pendingStop;
@@ -1589,6 +1677,12 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 
 	/** Abort the active backend's session, discarding any transcript in flight. */
 	private _cancelBackend(): void {
+		// NOVA
+		if (this._activeBackend === 'nova') {
+			this._novaCts?.cancel();
+			this._novaChunks = [];
+			return;
+		}
 		if (this._activeBackend === 'mai') {
 			this._transcriptionClient.disconnect();
 			return;
@@ -1639,6 +1733,11 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 			this._firstAudioMs = Date.now();
 		}
 		const buffer = encodeRawPcm16Buffer(samples);
+		// NOVA
+		if (this._activeBackend === 'nova') {
+			this._novaChunks.push(buffer);
+			return;
+		}
 		if (this._activeBackend === 'mai') {
 			try {
 				this._transcriptionClient.sendPttAudioChunk(this._maiTurnId, encodeBase64(buffer));
@@ -1729,6 +1828,7 @@ export class ChatSpeechToTextService extends Disposable implements IChatSpeechTo
 		this._maiFinalTranscript = undefined;
 		this._maiTurnId = '';
 		this._maiReceivedFinal = false;
+		this._novaChunks = []; // NOVA
 		if (this._activeBackend === 'mai') {
 			this._transcriptionClient.disconnect();
 		}

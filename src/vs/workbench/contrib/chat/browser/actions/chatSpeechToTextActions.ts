@@ -29,6 +29,7 @@ import { IChatWidgetService } from '../chat.js';
 import { ChatSpeechToTextState, DictationSettingId, IChatSpeechToTextService } from '../speechToText/chatSpeechToTextService.js';
 import { buildMicrophoneOptions, IDictationOnboardingService, RESET_DICTATION_ONBOARDING_COMMAND, SHOW_DICTATION_ONBOARDING_COMMAND } from '../speechToText/dictationOnboarding.js';
 import { cancelDictation, isDictating, startDictation, stopDictation } from '../speechToText/dictationSession.js';
+import { CONFIGURE_NOVA_DICTATION_COMMAND_ID, INovaCloudTranscriptionService } from '../speechToText/novaCloudTranscription.js'; // NOVA
 
 // Gate on `ChatContextKeys.enabled` so the dictation UI and its commands are
 // hidden (not just disabled) when the user has turned AI features off; without
@@ -249,6 +250,32 @@ export class ChatSpeechToTextConnectingAction extends Action2 {
 	}
 }
 
+/**
+ * NOVA: small gear next to the microphone that reopens the cloud dictation setup box, so the
+ * provider (Groq / Google / local model) or the API key can be changed at any time.
+ */
+class ConfigureNovaDictationAction extends Action2 {
+	constructor() {
+		super({
+			id: CONFIGURE_NOVA_DICTATION_COMMAND_ID,
+			title: localize2('nova.dictation.configure', "Configure Dictation"),
+			category: CHAT_CATEGORY,
+			icon: Codicon.settingsGear,
+			f1: true,
+			menu: [{
+				id: MenuId.ChatExecute,
+				order: -12,
+				when: ContextKeyExpr.and(ChatSpeechToTextConfigured, ChatSpeechToTextButtonShown, ChatContextKeys.speechToTextRecording.negate(), ChatSpeechToTextPreparing.negate(), AGENTS_VOICE_CONNECTED.negate(), SegmentedVoiceInputModePillInactive),
+				group: 'navigation',
+			}],
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		await accessor.get(INovaCloudTranscriptionService).configure();
+	}
+}
+
 class HoldToSpeechToTextAction extends Action2 {
 	static readonly ID = 'workbench.action.chat.holdToSpeechToText';
 
@@ -423,6 +450,7 @@ export function registerChatSpeechToTextActions(): DisposableStore {
 	store.add(registerAction2(ChatSpeechToTextPreparingAction));
 	store.add(registerAction2(ChatSpeechToTextConnectingAction));
 	store.add(registerAction2(HoldToSpeechToTextAction));
+	store.add(registerAction2(ConfigureNovaDictationAction)); // NOVA
 	store.add(registerAction2(CancelChatSpeechToTextAction));
 	store.add(registerAction2(ShowChatSpeechToTextIntroductionAction));
 	store.add(registerAction2(ResetChatSpeechToTextIntroductionAction));

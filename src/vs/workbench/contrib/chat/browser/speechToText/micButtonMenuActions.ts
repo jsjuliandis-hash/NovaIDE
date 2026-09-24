@@ -17,6 +17,7 @@ import { AgentsVoiceSettingId } from '../../../agentsVoice/common/agentsVoice.js
 import { CONFIGURE_DICTATION_INSTRUCTIONS_ACTION_ID, CONFIGURE_VOICE_INSTRUCTIONS_ACTION_ID } from '../actions/configureVoiceInstructionsAction.js';
 import { DictationSettingId } from './chatSpeechToTextService.js';
 import { SHOW_DICTATION_ONBOARDING_COMMAND } from './dictationOnboarding.js';
+import { CONFIGURE_NOVA_DICTATION_COMMAND_ID } from './novaCloudTranscription.js'; // NOVA
 
 /** Command that opens the microphone picker shared by dictation and Voice Mode. */
 export const SELECT_MICROPHONE_COMMAND = 'workbench.action.chat.selectSpeechToTextMicrophone';
@@ -119,6 +120,12 @@ export function getDictationContextMenuActions(commandService: ICommandService, 
 			createDisableDictationAction(commandService, configurationService),
 		],
 		[
+			// NOVA
+			toAction({
+				id: CONFIGURE_NOVA_DICTATION_COMMAND_ID,
+				label: localize('nova.dictation.menu.configure', "Configure Dictation (Provider and API Key)"),
+				run: () => commandService.executeCommand(CONFIGURE_NOVA_DICTATION_COMMAND_ID),
+			}),
 			createDictationSettingsAction(commandService),
 			createConfigureInstructionsAction(commandService, CONFIGURE_DICTATION_INSTRUCTIONS_ACTION_ID, localize('dictation.configureInstructions', "Configure Instructions")),
 			createShowDictationOnboardingAction(commandService),
