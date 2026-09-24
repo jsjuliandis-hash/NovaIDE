@@ -33,7 +33,7 @@
         "name": "opencode",
         "displayName": "OpenCode",
         "description": "%chatSessions.opencode.description%",
-        "icon": "$(sparkle)",
+        "icon": "$(nova-logo-opencode)",
         "welcomeTitle": "OpenCode",
         "welcomeMessage": "%chatSessions.opencode.welcomeMessage%",
         "inputPlaceholder": "%chatSessions.opencode.inputPlaceholder%",
@@ -49,7 +49,7 @@
         "name": "claude-code",
         "displayName": "Claude Code",
         "description": "%chatSessions.claudeCode.description%",
-        "icon": "$(hubot)",
+        "icon": "$(nova-logo-claude-code)",
         "welcomeTitle": "Claude Code",
         "welcomeMessage": "%chatSessions.claudeCode.welcomeMessage%",
         "inputPlaceholder": "%chatSessions.claudeCode.inputPlaceholder%",
@@ -65,7 +65,7 @@
         "name": "codex-cli",
         "displayName": "Codex CLI",
         "description": "%chatSessions.codex.description%",
-        "icon": "$(terminal)",
+        "icon": "$(nova-logo-codex)",
         "welcomeTitle": "Codex CLI",
         "welcomeMessage": "%chatSessions.codex.welcomeMessage%",
         "inputPlaceholder": "%chatSessions.codex.inputPlaceholder%",
@@ -81,7 +81,7 @@
         "name": "gemini-cli",
         "displayName": "Gemini CLI",
         "description": "%chatSessions.gemini.description%",
-        "icon": "$(star-full)",
+        "icon": "$(nova-logo-gemini-cli)",
         "welcomeTitle": "Gemini CLI",
         "welcomeMessage": "%chatSessions.gemini.welcomeMessage%",
         "inputPlaceholder": "%chatSessions.gemini.inputPlaceholder%",
@@ -166,6 +166,316 @@
             "--acp"
           ],
           "description": "%configuration.gemini.args%"
+        }
+      }
+    },
+    "icons": {
+      "nova-logo-ai2": {
+        "description": "ai2 logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E000"
+        }
+      },
+      "nova-logo-ai21": {
+        "description": "ai21 logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E001"
+        }
+      },
+      "nova-logo-amazon": {
+        "description": "amazon logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E002"
+        }
+      },
+      "nova-logo-antgroup": {
+        "description": "antgroup logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E003"
+        }
+      },
+      "nova-logo-anthropic": {
+        "description": "anthropic logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E004"
+        }
+      },
+      "nova-logo-arcee": {
+        "description": "arcee logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E005"
+        }
+      },
+      "nova-logo-baichuan": {
+        "description": "baichuan logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E006"
+        }
+      },
+      "nova-logo-baidu": {
+        "description": "baidu logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E007"
+        }
+      },
+      "nova-logo-bytedance": {
+        "description": "bytedance logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E008"
+        }
+      },
+      "nova-logo-claude-code": {
+        "description": "claude-code logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E009"
+        }
+      },
+      "nova-logo-codex": {
+        "description": "codex logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E00A"
+        }
+      },
+      "nova-logo-cohere": {
+        "description": "cohere logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E00B"
+        }
+      },
+      "nova-logo-deepseek": {
+        "description": "deepseek logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E00C"
+        }
+      },
+      "nova-logo-gemini": {
+        "description": "gemini logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E00D"
+        }
+      },
+      "nova-logo-gemini-cli": {
+        "description": "gemini-cli logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E00E"
+        }
+      },
+      "nova-logo-google": {
+        "description": "google logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E00F"
+        }
+      },
+      "nova-logo-groq": {
+        "description": "groq logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E010"
+        }
+      },
+      "nova-logo-huggingface": {
+        "description": "huggingface logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E011"
+        }
+      },
+      "nova-logo-ibm": {
+        "description": "ibm logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E012"
+        }
+      },
+      "nova-logo-inception": {
+        "description": "inception logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E013"
+        }
+      },
+      "nova-logo-liquid": {
+        "description": "liquid logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E014"
+        }
+      },
+      "nova-logo-lmstudio": {
+        "description": "lmstudio logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E015"
+        }
+      },
+      "nova-logo-meituan": {
+        "description": "meituan logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E016"
+        }
+      },
+      "nova-logo-meta": {
+        "description": "meta logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E017"
+        }
+      },
+      "nova-logo-microsoft": {
+        "description": "microsoft logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E018"
+        }
+      },
+      "nova-logo-minimax": {
+        "description": "minimax logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E019"
+        }
+      },
+      "nova-logo-mistral": {
+        "description": "mistral logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E01A"
+        }
+      },
+      "nova-logo-moonshot": {
+        "description": "moonshot logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E01B"
+        }
+      },
+      "nova-logo-nousresearch": {
+        "description": "nousresearch logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E01C"
+        }
+      },
+      "nova-logo-nvidia": {
+        "description": "nvidia logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E01D"
+        }
+      },
+      "nova-logo-ollama": {
+        "description": "ollama logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E01E"
+        }
+      },
+      "nova-logo-openai": {
+        "description": "openai logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E01F"
+        }
+      },
+      "nova-logo-opencode": {
+        "description": "opencode logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E020"
+        }
+      },
+      "nova-logo-openrouter": {
+        "description": "openrouter logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E021"
+        }
+      },
+      "nova-logo-perplexity": {
+        "description": "perplexity logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E022"
+        }
+      },
+      "nova-logo-qwen": {
+        "description": "qwen logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E023"
+        }
+      },
+      "nova-logo-reka": {
+        "description": "reka logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E024"
+        }
+      },
+      "nova-logo-stepfun": {
+        "description": "stepfun logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E025"
+        }
+      },
+      "nova-logo-tencent": {
+        "description": "tencent logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E026"
+        }
+      },
+      "nova-logo-upstage": {
+        "description": "upstage logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E027"
+        }
+      },
+      "nova-logo-xai": {
+        "description": "xai logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E028"
+        }
+      },
+      "nova-logo-xiaomi": {
+        "description": "xiaomi logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E029"
+        }
+      },
+      "nova-logo-zai": {
+        "description": "zai logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E02A"
+        }
+      },
+      "nova-logo-zeroone": {
+        "description": "zeroone logo",
+        "default": {
+          "fontPath": "./media/nova-logos.woff",
+          "fontCharacter": "\\E02B"
         }
       }
     }

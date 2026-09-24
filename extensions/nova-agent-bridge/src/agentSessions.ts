@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { vendorIcon } from './vendors';
 import { AcpAuthMethod, AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
 
 /**
@@ -22,8 +23,10 @@ export interface AgentDefinition {
 	readonly defaultCommand: string;
 	readonly defaultArgs: readonly string[];
 	readonly loginHint: string;
-	/** Codicon id for the session items and participant. */
+	/** Icon id (a codicon or a `nova-logo-*` glyph) for the session items and participant. */
 	readonly icon: string;
+	/** Logo shown for models whose company cannot be told from their id or name. */
+	readonly defaultVendor?: string;
 }
 
 interface SessionState {
@@ -79,13 +82,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 
 		this.controller.newChatSessionItemHandler = async context => {
 			const resource = vscode.Uri.from({ scheme: agent.type, path: `/${randomId()}` });
-			const label = (context.request.prompt || agent.label).split('\n')[0].slice(0, 80);
-			const item = this.controller.createChatSessionItem(resource, label);
-			item.iconPath = new vscode.ThemeIcon(agent.icon);
-			item.timing = { created: Date.now() };
-			this.sessions.set(resource.toString(), { acpSessionId: undefined, item, appliedOptions: new Map() });
-			this.controller.items.add(item);
-			return item;
+			return this.createSession(resource, context.request.prompt).item;
 		};
 
 		this.controller.getChatSessionInputState = async (_sessionResource, context) => {
@@ -103,6 +100,17 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		participant.iconPath = new vscode.ThemeIcon(agent.icon);
 		this.disposables.push(participant);
 		this.disposables.push(vscode.chat.registerChatSessionContentProvider(agent.type, this, participant, { supportsInterruptions: true }));
+	}
+
+	private createSession(resource: vscode.Uri, prompt: string): SessionState {
+		const label = (prompt || this.agent.label).split('\n')[0].slice(0, 80);
+		const item = this.controller.createChatSessionItem(resource, label);
+		item.iconPath = new vscode.ThemeIcon(this.agent.icon);
+		item.timing = { created: Date.now() };
+		const state: SessionState = { acpSessionId: undefined, item, appliedOptions: new Map() };
+		this.sessions.set(resource.toString(), state);
+		this.controller.items.add(item);
+		return state;
 	}
 
 	dispose(): void {
@@ -212,6 +220,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				id: o.value,
 				name: o.name,
 				description: o.description,
+				icon: slot.category === 'model' ? vendorIcon(o.value, o.name, this.agent.defaultVendor) : undefined,
 				default: o.value === option.currentValue
 			}));
 			const previousSelection = previous?.groups.find(g => g.id === option.id)?.selected;
@@ -226,7 +235,13 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	private async handleRequest(request: vscode.ChatRequest, context: vscode.ChatContext, stream: vscode.ChatResponseStream, token: vscode.CancellationToken): Promise<vscode.ChatResult> {
 		const sessionContext = context.chatSessionContext;
 		const resource = sessionContext?.chatSessionItem.resource;
-		const state = resource ? this.sessions.get(resource.toString()) : undefined;
+		let state = resource ? this.sessions.get(resource.toString()) : undefined;
+		if (sessionContext && resource && !state && !sessionContext.isUntitled) {
+			// A session from before the window reloaded (e.g. a restored chat tab): the agent process no longer
+			// knows it, so the conversation continues in a new agent session.
+			state = this.createSession(resource, request.prompt);
+			stream.markdown(vscode.l10n.t('_This session was opened before the window reloaded, so {0} starts without its earlier messages._', this.agent.label) + '\n\n');
+		}
 		if (!sessionContext || !state) {
 			stream.markdown(vscode.l10n.t('Start a new {0} session from the session picker to talk to the agent.', this.agent.label));
 			return {};

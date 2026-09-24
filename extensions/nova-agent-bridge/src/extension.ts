@@ -15,7 +15,8 @@ const AGENTS: readonly AgentDefinition[] = [
 		defaultCommand: 'opencode',
 		defaultArgs: ['acp'],
 		loginHint: 'opencode auth login',
-		icon: 'sparkle'
+		icon: 'nova-logo-opencode',
+		defaultVendor: 'opencode'
 	},
 	{
 		type: 'nova-claude-code',
@@ -24,7 +25,8 @@ const AGENTS: readonly AgentDefinition[] = [
 		defaultCommand: 'npx',
 		defaultArgs: ['-y', '@agentclientprotocol/claude-agent-acp'],
 		loginHint: 'claude',
-		icon: 'hubot'
+		icon: 'nova-logo-claude-code',
+		defaultVendor: 'anthropic'
 	},
 	{
 		type: 'nova-codex',
@@ -33,7 +35,8 @@ const AGENTS: readonly AgentDefinition[] = [
 		defaultCommand: 'npx',
 		defaultArgs: ['-y', '@agentclientprotocol/codex-acp'],
 		loginHint: 'codex login',
-		icon: 'terminal'
+		icon: 'nova-logo-codex',
+		defaultVendor: 'openai'
 	},
 	{
 		type: 'nova-gemini',
@@ -42,7 +45,8 @@ const AGENTS: readonly AgentDefinition[] = [
 		defaultCommand: 'npx',
 		defaultArgs: ['-y', '@google/gemini-cli', '--acp'],
 		loginHint: 'gemini',
-		icon: 'star-full'
+		icon: 'nova-logo-gemini-cli',
+		defaultVendor: 'google'
 	}
 ];
 

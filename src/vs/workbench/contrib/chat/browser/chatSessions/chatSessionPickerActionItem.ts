@@ -147,6 +147,8 @@ export class ChatSessionPickerActionItem extends ActionWidgetDropdownActionViewI
 				icon: optionItem.icon,
 				checked: isCurrent,
 				class: undefined,
+				// NOVA: a company logo takes the checkmark's place, so mark the current item on the row instead
+				className: isCurrent && isNovaLogo(optionItem.icon) ? 'nova-option-current' : undefined,
 				description: optionItem.description,
 				tooltip: optionItem.description ?? optionItem.name,
 				label: optionItem.name,
@@ -300,14 +302,16 @@ export class ChatSessionPickerActionItem extends ActionWidgetDropdownActionViewI
 		element.classList.toggle('compact', compact);
 		const label = this.currentOption?.name ?? group?.description ?? localize('chat.sessionPicker.label', "Pick Option");
 		// If the current option is the default and has an icon, collapse the text and show only the icon
-		const isDefaultWithIcon = this.currentOption?.default && this.currentOption?.icon;
-		element.classList.toggle('icon-only', compact && !!this.currentOption?.icon);
+		// NOVA: except for company logos, which go next to the model name
+		const hasLogo = isNovaLogo(this.currentOption?.icon);
+		const isDefaultWithIcon = this.currentOption?.default && this.currentOption?.icon && !hasLogo;
+		element.classList.toggle('icon-only', compact && !!this.currentOption?.icon && !hasLogo);
 
 		if (this.currentOption?.icon) {
 			domChildren.push(renderIcon(getCompactCodicon(this.currentOption.icon)));
 		}
 
-		if (!isDefaultWithIcon && (!compact || !this.currentOption?.icon)) {
+		if (!isDefaultWithIcon && (!compact || !this.currentOption?.icon || hasLogo)) {
 			domChildren.push(dom.$('span.chat-session-option-label', undefined, label));
 		}
 
@@ -346,4 +350,9 @@ export class ChatSessionPickerActionItem extends ActionWidgetDropdownActionViewI
 			this.container.classList.toggle('locked', !!this.currentOption?.locked);
 		}
 	}
+}
+
+/** NOVA: company logos from the nova-logos icon font (see nova-agent-bridge). */
+function isNovaLogo(icon: ThemeIcon | undefined): boolean {
+	return !!icon?.id.startsWith('nova-logo-');
 }

@@ -56,3 +56,16 @@
 .monaco-action-bar .action-item.locked {
 	pointer-events: none;
 }
+
+/* NOVA: the current option when its icon is a company logo (the logo takes the checkmark's place) */
+.action-widget .monaco-list-row.action.nova-option-current .title {
+	font-weight: 600;
+}
+
+.action-widget .monaco-list-row.action.nova-option-current .title::after {
+	content: '\eab2'; /* codicon check */
+	font-family: codicon;
+	font-weight: normal;
+	margin-left: 6px;
+	vertical-align: middle;
+}
