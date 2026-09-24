@@ -45,6 +45,7 @@ export interface AcpToolCallContent {
 
 export interface AcpSessionUpdate {
 	readonly sessionUpdate: string;
+	readonly messageId?: string;
 	readonly content?: { readonly type: string; readonly text?: string };
 	readonly toolCallId?: string;
 	readonly title?: string;

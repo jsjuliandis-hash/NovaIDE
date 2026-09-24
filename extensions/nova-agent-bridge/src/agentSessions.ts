@@ -253,12 +253,13 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		const toolCalls = new Map<string, { title: string; kind?: string }>();
 		const editedFiles = new Set<string>();
 		let thinking = false;
+		const lastMessage = { id: undefined as string | undefined };
 
 		const listener = connection.onDidUpdate(({ sessionId, update }) => {
 			if (sessionId !== acpSessionId) {
 				return;
 			}
-			this.renderUpdate(update, stream, toolCalls, editedFiles, () => {
+			this.renderUpdate(update, stream, toolCalls, editedFiles, lastMessage, () => {
 				if (!thinking) {
 					thinking = true;
 					stream.progress(vscode.l10n.t('Thinking…'));
@@ -310,10 +311,17 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		}
 	}
 
-	private renderUpdate(update: AcpSessionUpdate, stream: vscode.ChatResponseStream, toolCalls: Map<string, { title: string; kind?: string }>, editedFiles: Set<string>, onThinking: () => void): void {
+	private renderUpdate(update: AcpSessionUpdate, stream: vscode.ChatResponseStream, toolCalls: Map<string, { title: string; kind?: string }>, editedFiles: Set<string>, lastMessage: { id: string | undefined }, onThinking: () => void): void {
 		switch (update.sessionUpdate) {
 			case 'agent_message_chunk':
 				if (update.content?.type === 'text' && update.content.text) {
+					// A new agent message (e.g. after a tool call) starts a new paragraph.
+					if (update.messageId && lastMessage.id && update.messageId !== lastMessage.id) {
+						stream.markdown('
+
+');
+					}
+					lastMessage.id = update.messageId ?? lastMessage.id;
 					stream.markdown(update.content.text);
 				}
 				break;
