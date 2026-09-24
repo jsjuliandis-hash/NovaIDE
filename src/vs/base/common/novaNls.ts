@@ -51,7 +51,7 @@ export const novaTranslations: Readonly<Record<string, Readonly<Record<string, R
 			'nova.dictation.pickLocal': 'Modelo local (roda neste computador)',
 			'nova.dictation.pickLocalDetail': 'Sem chave de API. Mais lento sem placa NVIDIA.',
 			'nova.dictation.pickTitle': 'Ditado: como sua voz deve ser transcrita?',
-			'nova.dictation.pickPlaceholder': 'Escolha um provedor. Seu áudio é enviado a ele, e só enquanto você dita.',
+			'nova.dictation.pickPlaceholder': 'Escolha um provedor abaixo ou cole sua chave de API aqui. Seu áudio é enviado ao provedor, e só enquanto você dita.',
 			'nova.dictation.keyTitleGroq': 'Chave de API do Groq',
 			'nova.dictation.keyTitleGoogle': 'Chave de API do Google Gemini',
 			'nova.dictation.keyPromptGroq': 'Cole sua chave de console.groq.com/keys (começa com gsk_)',

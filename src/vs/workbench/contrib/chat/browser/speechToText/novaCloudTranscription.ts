@@ -5,6 +5,7 @@
  *-------------------------------------------------------------------------------------------*/
 
 import { VSBuffer, encodeBase64 } from '../../../../../base/common/buffer.js';
+import { DisposableStore } from '../../../../../base/common/lifecycle.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { localize } from '../../../../../nls.js';
 import { ConfigurationTarget, IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
@@ -148,6 +149,12 @@ const SECRET_KEYS: Record<NovaCloudProvider, string> = {
 
 const LOCAL_PICK_ID = 'local';
 
+/** Shapes of the keys each provider hands out, to recognise a key pasted into the provider list. */
+const PASTED_KEY_PATTERNS: { readonly provider: NovaCloudProvider; readonly pattern: RegExp }[] = [
+	{ provider: 'groq', pattern: /^gsk_[A-Za-z0-9]{48,}$/ },
+	{ provider: 'google', pattern: /^AIza[\w-]{35,}$/ },
+];
+
 interface IProviderPickItem extends IQuickPickItem {
 	readonly id: NovaCloudProvider | typeof LOCAL_PICK_ID;
 }
@@ -216,16 +223,11 @@ export class NovaCloudTranscriptionService implements INovaCloudTranscriptionSer
 				detail: localize('nova.dictation.pickLocalDetail', "No API key. Slower without an NVIDIA GPU."),
 			},
 		];
-		const picked = await this._quickInputService.pick(items, {
-			title: localize('nova.dictation.pickTitle', "Dictation: How Should Your Voice Be Transcribed?"),
-			placeHolder: localize('nova.dictation.pickPlaceholder', "Pick a provider. Your audio is sent to it, and only while you dictate."),
-			ignoreFocusLost: true,
-			activeItem: items.find(item => item.id === current),
-			canPickMany: false,
-		});
-		if (!picked) {
+		const choice = await this._pickProvider(items, current);
+		if (!choice) {
 			return 'cancelled';
 		}
+		const picked = choice.item;
 
 		if (picked.id === LOCAL_PICK_ID) {
 			await this._configurationService.updateValue('dictation.model', DEFAULT_LOCAL_TRANSCRIPTION_MODEL, ConfigurationTarget.USER);
@@ -235,8 +237,10 @@ export class NovaCloudTranscriptionService implements INovaCloudTranscriptionSer
 		const provider = picked.id;
 		const existingKey = await this._secretStorageService.get(SECRET_KEYS[provider]);
 		let errorMessage: string | undefined;
+		let pasted = choice.pastedKey;
 		for (; ;) {
-			const entered = await this._quickInputService.input({
+			// A key pasted straight into the provider list skips the key box the first time.
+			const entered = pasted ?? await this._quickInputService.input({
 				title: provider === 'groq'
 					? localize('nova.dictation.keyTitleGroq', "Groq API Key")
 					: localize('nova.dictation.keyTitleGoogle', "Google Gemini API Key"),
@@ -250,6 +254,7 @@ export class NovaCloudTranscriptionService implements INovaCloudTranscriptionSer
 				ignoreFocusLost: true,
 				validateInput: async value => (!value.trim() && !existingKey) ? localize('nova.dictation.keyRequired', "Paste an API key to continue.") : undefined,
 			});
+			pasted = undefined;
 			if (entered === undefined) {
 				return 'cancelled';
 			}
@@ -272,6 +277,50 @@ export class NovaCloudTranscriptionService implements INovaCloudTranscriptionSer
 		await this._configurationService.updateValue('dictation.model', DICTATION_NOVA_CLOUD_MODEL_ID, ConfigurationTarget.USER);
 		this._notificationService.info(localize('nova.dictation.saved', "Dictation now uses {0}.", this.providerLabel));
 		return 'ready';
+	}
+
+	/**
+	 * Provider list. The items stay visible whatever is typed, and a key pasted into the filter box
+	 * (`gsk_…` for Groq, `AIza…` for Google) picks its provider automatically.
+	 */
+	private _pickProvider(items: IProviderPickItem[], current: NovaCloudProvider | undefined): Promise<{ item: IProviderPickItem; pastedKey?: string } | undefined> {
+		return new Promise(resolve => {
+			const pick = this._quickInputService.createQuickPick<IProviderPickItem>();
+			const disposables = new DisposableStore();
+			disposables.add(pick);
+			let settled = false;
+			const finish = (result: { item: IProviderPickItem; pastedKey?: string } | undefined) => {
+				if (!settled) {
+					settled = true;
+					resolve(result);
+				}
+				disposables.dispose();
+			};
+			pick.title = localize('nova.dictation.pickTitle', "Dictation: How Should Your Voice Be Transcribed?");
+			pick.placeholder = localize('nova.dictation.pickPlaceholder', "Pick a provider below, or paste your API key here. Your audio is sent to the provider, only while you dictate.");
+			pick.ignoreFocusOut = true;
+			pick.matchOnDescription = false;
+			pick.items = items.map(item => ({ ...item, alwaysShow: true }));
+			const active = pick.items.find(item => item.id === current);
+			if (active) {
+				pick.activeItems = [active];
+			}
+			disposables.add(pick.onDidChangeValue(value => {
+				const key = value.trim();
+				const pasted = PASTED_KEY_PATTERNS.find(candidate => candidate.pattern.test(key));
+				if (pasted) {
+					finish({ item: items.find(item => item.id === pasted.provider)!, pastedKey: key });
+				}
+			}));
+			disposables.add(pick.onDidAccept(() => {
+				const selected = pick.selectedItems[0];
+				if (selected) {
+					finish({ item: items.find(item => item.id === selected.id)! });
+				}
+			}));
+			disposables.add(pick.onDidHide(() => finish(undefined)));
+			pick.show();
+		});
 	}
 
 	/** Cheap authenticated request; returns an error message, or `undefined` when the key works. */
