@@ -55,6 +55,9 @@ import { GlyphHoverController } from '../../../../../../editor/contrib/hover/bro
 import { LinkDetector } from '../../../../../../editor/contrib/links/browser/links.js';
 import { SuggestController } from '../../../../../../editor/contrib/suggest/browser/suggestController.js';
 import { localize } from '../../../../../../nls.js';
+import { ICommandService } from '../../../../../../platform/commands/common/commands.js'; // NOVA
+import { IHoverService } from '../../../../../../platform/hover/browser/hover.js'; // NOVA
+import { renderNovaDonationButton } from './novaDonationButton.js'; // NOVA
 import { IAccessibilityService } from '../../../../../../platform/accessibility/common/accessibility.js';
 import { MenuWorkbenchButtonBar } from '../../../../../../platform/actions/browser/buttonbar.js';
 import { IActionViewItemService, type IActionViewItemFactory } from '../../../../../../platform/actions/browser/actionViewItemService.js';
@@ -981,6 +984,8 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		@IWorkbenchEnvironmentService private readonly environmentService: IWorkbenchEnvironmentService,
 		@IChatPetService private readonly chatPetService: IChatPetService,
 		@IActionViewItemService private readonly actionViewItemService: IActionViewItemService,
+		@ICommandService private readonly novaCommandService: ICommandService, // NOVA
+		@IHoverService private readonly novaHoverService: IHoverService, // NOVA
 	) {
 		super();
 		this._modelSelectionDiagnostics = new ChatModelSelectionDiagnostics(this.logService, this.storageService, () => ({
@@ -3270,6 +3275,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 				dom.h(`.chat-question-carousel-widget-container.${chatInputSurfaceStackSlotClass}@chatQuestionCarouselContainer`),
 				dom.h(`.chat-tool-confirmation-carousel-container.${chatInputSurfaceStackSlotClass}@chatToolConfirmationCarouselContainer`),
 				dom.h(`.interactive-input-followups.${chatInputSurfaceStackSlotClass}@followupsContainer`),
+				dom.h('.nova-donation-container@novaDonationContainer'), // NOVA
 				dom.h(`.${chatInputStackClass}`, [
 					dom.h(`.chat-input-notification-container.${chatInputStackSlotClass}@chatInputNotificationContainer`),
 					dom.h(`.voice-mode-onboarding-container.${chatInputStackSlotClass}@voiceModeOnboardingContainer`),
@@ -3311,6 +3317,11 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		ChatContextKeys.inChatInput.bindTo(archiveNudgeContextKeyService).set(true);
 
 		this.followupsContainer = elements.followupsContainer;
+		// NOVA: "Donation" button above the input of the Chat view
+		const novaDonationContainer = (elements as { novaDonationContainer?: HTMLElement }).novaDonationContainer; // only in the regular layout
+		if (novaDonationContainer && this.location === ChatAgentLocation.Chat && this.options.widgetViewKindTag === 'view') {
+			this._register(renderNovaDonationButton(novaDonationContainer, this.novaCommandService, this.novaHoverService));
+		}
 		const inputAndSideToolbar = elements.inputAndSideToolbar; // The chat input and toolbar to the right
 		this.inputAndSideToolbar = inputAndSideToolbar;
 		const inputContainer = elements.inputContainer; // The chat editor, attachments, and toolbars

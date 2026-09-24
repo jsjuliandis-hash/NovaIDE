@@ -1,0 +1,37 @@
+/*---------------------------------------------------------------------------------------------
+ *  Nova IDE
+ *-------------------------------------------------------------------------------------------*/
+
+.interactive-session .nova-donation-row {
+	display: flex;
+	justify-content: flex-end;
+	padding: 0 2px 4px;
+}
+
+.interactive-session .nova-donation-button {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	padding: 1px 6px;
+	border-radius: 4px;
+	font-size: 11px;
+	line-height: 16px;
+	color: var(--vscode-descriptionForeground);
+	cursor: pointer;
+	text-decoration: none;
+}
+
+.interactive-session .nova-donation-button .codicon {
+	font-size: 12px;
+	color: var(--vscode-charts-red);
+}
+
+.interactive-session .nova-donation-button:hover {
+	color: var(--vscode-foreground);
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.interactive-session .nova-donation-button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: -1px;
+}
