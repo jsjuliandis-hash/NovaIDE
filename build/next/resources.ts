@@ -74,6 +74,9 @@ const desktopResourcePatterns = [
 	'vs/workbench/browser/parts/editor/media/*.png',
 	'vs/workbench/contrib/debug/browser/media/*.png',
 
+	// NOVA: donation popup page
+	'vs/platform/novaDonation/electron-main/media/*',
+
 	// Sessions - built-in prompts and skills
 	'vs/sessions/prompts/*.prompt.md',
 	'vs/sessions/skills/**/SKILL.md',

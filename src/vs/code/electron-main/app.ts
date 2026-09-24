@@ -583,10 +583,10 @@ export class CodeApplication extends Disposable {
 					return; // Allow navigation in integrated browser views
 				}
 
-				// NOVA: the donation popup may move within Live Pix; any other page opens in the system browser
+				// NOVA: links of the donation popup open in the system browser instead of replacing the page
 				if (NovaDonationMainService.isDonationWebContents(contents)) {
-					if (!NovaDonationMainService.isAllowedNavigation(event.url)) {
-						event.preventDefault();
+					event.preventDefault();
+					if (/^https:\/\//.test(event.url)) {
 						this.nativeHostMainService?.openExternal(undefined, event.url);
 					}
 					return;

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<!-- Nova IDE: donation popup. Loaded from disk in a sandboxed window (see novaDonationMainService.ts). -->
+<html lang="pt-BR">
+<head>
+	<meta charset="utf-8" />
+	<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src 'self'; style-src 'self'; script-src 'self'; frame-src https://widget.livepix.gg;" />
+	<title>Apoie a Nova IDE</title>
+	<link rel="stylesheet" href="donation.css" />
+</head>
+<body>
+	<main class="window">
+
+		<header class="titlebar">
+			<div class="titlebar-title">
+				<img class="logo" src="nova-ide.svg" alt="" />
+				<span class="brand">Nova IDE</span>
+				<span class="separator">/</span>
+				<span class="title">Apoie a Nova IDE</span>
+				<span class="tag" id="version" hidden></span>
+			</div>
+			<div class="titlebar-actions">
+				<span class="status"><span class="status-dot"></span> Código aberto · GPL-3.0</span>
+				<button class="window-button close" id="closeButton" type="button" aria-label="Fechar janela" title="Fechar">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" x2="6" y1="6" y2="18"></line><line x1="6" x2="18" y1="6" y2="18"></line></svg>
+				</button>
+			</div>
+		</header>
+
+		<div class="content code-grid">
+
+			<!-- Donation card -->
+			<section class="donation-card" aria-label="Doação via Pix">
+				<div class="card-header">
+					<div class="card-title"><span class="card-marker"></span>Contribuição Direta</div>
+					<span class="tag">Pix</span>
+				</div>
+
+				<div class="qr-box">
+					<iframe class="livepix" src="https://widget.livepix.gg/embed/376b5a28-01ab-47ea-9a31-45ff13d2dace" title="QR Code Pix do Live Pix" allow="clipboard-write"></iframe>
+				</div>
+
+				<div class="copy-field">
+					<div class="copy-label">
+						<span>Link do Live Pix:</span>
+						<span class="copy-notice" id="copyNotice" aria-live="polite">Copiado!</span>
+					</div>
+					<div class="copy-row">
+						<span class="copy-prefix">pix:</span>
+						<input id="pixInput" type="text" readonly value="livepix.gg/juliandis" aria-label="Link do Live Pix" />
+						<button class="copy-button" id="copyPixBtn" type="button">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect height="13" rx="2" ry="2" width="13" x="9" y="9"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+							<span>Copiar</span>
+						</button>
+					</div>
+				</div>
+			</section>
+
+			<!-- Manifesto -->
+			<section class="manifesto">
+				<div class="manifesto-text">
+					<div class="badges">
+						<span class="pill"><span class="pulse"></span>Código Aberto &amp; Agentes de IA</span>
+						<span class="muted-note">• Feito no Brasil</span>
+					</div>
+					<h1>O futuro do código com IA é <span class="gradient-text">colaborativo e livre</span>.</h1>
+					<p class="lead">
+						Programar conversando com <strong>agentes de IA</strong> dentro do editor não deveria depender de ferramentas fechadas.
+						A <strong>Nova IDE</strong> é gratuita e de código aberto: roda OpenCode, Claude Code, Codex e Gemini lado a lado no Chat
+						e deixa os agentes enxergarem e testarem a página no navegador integrado.
+					</p>
+					<p class="small">
+						Sua doação paga as horas de desenvolvimento, os testes com modelos e agentes e as próximas versões da IDE.
+					</p>
+				</div>
+
+				<div class="features">
+					<div class="feature">
+						<div class="feature-icon">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect height="11" rx="2" ry="2" width="18" x="3" y="11"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>
+						</div>
+						<div>
+							<h2>Código Livre e Transparente</h2>
+							<p>Licença GPL-3.0: o código fica aberto para qualquer pessoa ler, usar e melhorar.</p>
+						</div>
+					</div>
+					<div class="feature">
+						<div class="feature-icon">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+						</div>
+						<div>
+							<h2>Agentes que Veem o Resultado</h2>
+							<p>Navegador integrado, dev server automático e abas de chat que trabalham ao mesmo tempo.</p>
+						</div>
+					</div>
+					<div class="feature wide">
+						<div class="feature-icon">
+							<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+						</div>
+						<div>
+							<h2>Independente e em Português</h2>
+							<p>Projeto independente, com a interface em português do Brasil e aberto a contribuições da comunidade.</p>
+						</div>
+					</div>
+				</div>
+
+				<div class="links">
+					<a class="link-button" href="https://github.com/jsjuliandis-hash/NovaIDE" target="_blank" rel="noopener">
+						<svg viewBox="0 0 24 24" fill="currentColor"><path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path></svg>
+						<span>Ver Repositório no GitHub</span>
+					</a>
+					<button class="link-button accent" id="copyPixQuickBtn" type="button">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect height="13" rx="2" ry="2" width="13" x="9" y="9"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+						<span>Copiar Link do Pix</span>
+					</button>
+				</div>
+			</section>
+		</div>
+
+		<footer class="footer">
+			<div class="footer-links">
+				<a href="https://github.com/jsjuliandis-hash/NovaIDE/blob/main/LICENSE.txt" target="_blank" rel="noopener">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" x2="12" y1="16" y2="12"></line><line x1="12" x2="12.01" y1="8" y2="8"></line></svg>
+					<span>Licença GPL-3.0</span>
+				</a>
+				<span>•</span>
+				<a href="https://github.com/jsjuliandis-hash/NovaIDE/issues" target="_blank" rel="noopener">Reportar um Problema</a>
+			</div>
+			<div class="footer-actions">
+				<button class="later-button" id="laterButton" type="button">Talvez mais tarde</button>
+				<a class="primary-button" href="https://livepix.gg/juliandis" target="_blank" rel="noopener">
+					<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+					<span>Doar pelo Navegador</span>
+				</a>
+			</div>
+		</footer>
+	</main>
+	<script src="donation.js"></script>
+</body>
+</html>

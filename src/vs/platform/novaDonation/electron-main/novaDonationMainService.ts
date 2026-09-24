@@ -1,13 +1,15 @@
 /*---------------------------------------------------------------------------------------------
  *  Nova IDE
- *  Main-process side of the donation popup: a small window over the IDE that shows the Live Pix
- *  donation widget. It opens once per application start (not on window reloads or new windows),
- *  unless `nova.donation.showOnStartup` is off, and on demand with the "Support Nova IDE" command.
+ *  Main-process side of the donation popup: a frameless window over the IDE with the Nova IDE
+ *  donation page (./media/donation.html), which embeds the Live Pix QR code widget. It opens once
+ *  per application start (not on window reloads or new windows), unless
+ *  `nova.donation.showOnStartup` is off, and on demand with the "Support Nova IDE" command.
  *-------------------------------------------------------------------------------------------*/
 
 import electron from 'electron';
 import { Event } from '../../../base/common/event.js';
 import { Disposable, toDisposable } from '../../../base/common/lifecycle.js';
+import { FileAccess } from '../../../base/common/network.js';
 import { join } from '../../../base/common/path.js';
 import { isLinux, isWindows } from '../../../base/common/platform.js';
 import { localize } from '../../../nls.js';
@@ -15,9 +17,9 @@ import { IConfigurationService } from '../../configuration/common/configuration.
 import { IEnvironmentMainService } from '../../environment/electron-main/environmentMainService.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
 import { ILogService } from '../../log/common/log.js';
-import { IThemeMainService } from '../../theme/electron-main/themeMainService.js';
+import { IProductService } from '../../product/common/productService.js';
 import { IWindowsMainService } from '../../windows/electron-main/windows.js';
-import { INovaDonationService, NOVA_DONATION_HOST_SUFFIX, NOVA_DONATION_URL, NovaDonationSettingId } from '../common/novaDonation.js';
+import { INovaDonationService, NovaDonationSettingId } from '../common/novaDonation.js';
 
 export const INovaDonationMainService = createDecorator<INovaDonationMainService>('novaDonation');
 
@@ -28,8 +30,11 @@ export interface INovaDonationMainService extends INovaDonationService {
 /** Wait after the first window is ready, so the popup does not compete with the IDE starting up. */
 const STARTUP_DELAY_MS = 3000;
 
-/** Separate session: the remote page shares no cookies or storage with the IDE. */
+/** Separate session: the page and the embedded Live Pix widget share no cookies or storage with the IDE. */
 const DONATION_PARTITION = 'persist:nova-donation';
+
+/** Background of the page, shown until it paints. */
+const DONATION_BACKGROUND = '#0e262e';
 
 export class NovaDonationMainService extends Disposable implements INovaDonationMainService {
 
@@ -37,26 +42,16 @@ export class NovaDonationMainService extends Disposable implements INovaDonation
 
 	private _window: electron.BrowserWindow | undefined;
 
-	/** True for the web contents of the donation popup (used to allow its navigation within Live Pix). */
+	/** True for the web contents of the donation popup. Its links open in the system browser. */
 	static isDonationWebContents(contents: electron.WebContents): boolean {
 		return contents.session === electron.session.fromPartition(DONATION_PARTITION);
-	}
-
-	/** Whether the popup may navigate to `url` in place. Other URLs open in the system browser. */
-	static isAllowedNavigation(url: string): boolean {
-		try {
-			const { protocol, hostname } = new URL(url);
-			return protocol === 'https:' && (hostname === NOVA_DONATION_HOST_SUFFIX || hostname.endsWith(`.${NOVA_DONATION_HOST_SUFFIX}`));
-		} catch {
-			return false;
-		}
 	}
 
 	constructor(
 		@IWindowsMainService private readonly _windowsMainService: IWindowsMainService,
 		@IConfigurationService private readonly _configurationService: IConfigurationService,
 		@IEnvironmentMainService private readonly _environmentMainService: IEnvironmentMainService,
-		@IThemeMainService private readonly _themeMainService: IThemeMainService,
+		@IProductService private readonly _productService: IProductService,
 		@ILogService private readonly _logService: ILogService,
 	) {
 		super();
@@ -88,19 +83,18 @@ export class NovaDonationMainService extends Disposable implements INovaDonation
 		const parent = this._windowsMainService.getFocusedWindow()?.win ?? this._windowsMainService.getLastActiveWindow()?.win ?? undefined;
 		const window = this._window = new electron.BrowserWindow({
 			title: localize('nova.donation.title', "Support Nova IDE"),
-			// The Live Pix widget is a QR code card of about 240×340 px
-			width: 360,
-			height: 460,
+			width: 920,
+			height: 740,
 			useContentSize: true,
 			parent,
 			show: false,
+			frame: false, // the page draws its own title bar and close button
 			center: true,
 			resizable: false,
 			minimizable: false,
 			maximizable: false,
 			fullscreenable: false,
-			autoHideMenuBar: true,
-			backgroundColor: this._themeMainService.getBackgroundColor(),
+			backgroundColor: DONATION_BACKGROUND,
 			icon: this._windowIcon(),
 			webPreferences: {
 				partition: DONATION_PARTITION,
@@ -114,36 +108,32 @@ export class NovaDonationMainService extends Disposable implements INovaDonation
 		window.removeMenu();
 
 		if (parent) {
-			// Center over the IDE window rather than the screen
+			// Center over the IDE window rather than the screen, without leaving the screen
 			const parentBounds = parent.getBounds();
 			const bounds = window.getBounds();
+			const workArea = electron.screen.getDisplayMatching(parentBounds).workArea;
+			const x = Math.round(parentBounds.x + (parentBounds.width - bounds.width) / 2);
+			const y = Math.round(parentBounds.y + (parentBounds.height - bounds.height) / 2);
 			window.setPosition(
-				Math.round(parentBounds.x + (parentBounds.width - bounds.width) / 2),
-				Math.round(parentBounds.y + Math.max(0, (parentBounds.height - bounds.height) / 2))
+				Math.min(Math.max(x, workArea.x), workArea.x + Math.max(0, workArea.width - bounds.width)),
+				Math.min(Math.max(y, workArea.y), workArea.y + Math.max(0, workArea.height - bounds.height))
 			);
 		}
 
-		// Keep our title instead of the page's
-		window.on('page-title-updated', e => e.preventDefault());
 		window.once('ready-to-show', () => window.show());
 		window.once('closed', () => {
 			if (this._window === window) {
 				this._window = undefined;
 			}
 		});
-		window.webContents.on('did-fail-load', (_event, errorCode, errorDescription, _url, isMainFrame) => {
-			if (isMainFrame) {
-				this._logService.warn(`[nova donation] could not load the donation page (${errorCode} ${errorDescription}), closing the popup`);
-				window.destroy();
-			}
-		});
 
 		this._logService.info('[nova donation] showing the donation popup');
 		try {
-			await window.loadURL(NOVA_DONATION_URL);
+			const page = FileAccess.asFileUri('vs/platform/novaDonation/electron-main/media/donation.html').fsPath;
+			await window.loadFile(page, { query: { version: this._productService.version } });
 		} catch (error) {
-			// Reported through did-fail-load as well
-			this._logService.trace(`[nova donation] loadURL failed: ${error instanceof Error ? error.message : String(error)}`);
+			this._logService.error(`[nova donation] could not load the donation page: ${error instanceof Error ? error.message : String(error)}`);
+			window.destroy();
 		}
 	}
 
