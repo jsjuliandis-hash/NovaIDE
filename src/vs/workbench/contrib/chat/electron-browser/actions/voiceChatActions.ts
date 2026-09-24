@@ -23,6 +23,7 @@ import { Extensions, IConfigurationRegistry } from '../../../../../platform/conf
 import { ContextKeyExpr, ContextKeyExpression, IContextKeyService, RawContextKey } from '../../../../../platform/contextkey/common/contextkey.js';
 import { IInstantiationService, ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { IKeybindingService } from '../../../../../platform/keybinding/common/keybinding.js';
+import { INotificationService } from '../../../../../platform/notification/common/notification.js'; // NOVA
 import { KeybindingWeight } from '../../../../../platform/keybinding/common/keybindingsRegistry.js';
 import { Registry } from '../../../../../platform/registry/common/platform.js';
 import { contrastBorder, focusBorder } from '../../../../../platform/theme/common/colorRegistry.js';
@@ -44,6 +45,7 @@ import { CONTEXT_SETTINGS_EDITOR } from '../../../preferences/common/preferences
 import { SearchContext } from '../../../search/common/constants.js';
 import { TextToSpeechInProgress as GlobalTextToSpeechInProgress, HasSpeechProvider, ISpeechService, KeywordRecognitionStatus, SpeechToTextInProgress, SpeechToTextStatus, TextToSpeechStatus } from '../../../speech/common/speechService.js';
 import { CHAT_CATEGORY } from '../../browser/actions/chatActions.js';
+import { CONFIGURE_NOVA_TTS_COMMAND_ID, INovaTextToSpeechService, NovaAutoSpeakOn } from '../novaTextToSpeech/novaTextToSpeechService.js'; // NOVA
 import { IChatExecuteActionContext } from '../../browser/actions/chatExecuteActions.js';
 import { IChatWidget, IChatWidgetService, IQuickChatService } from '../../browser/chat.js';
 import { SegmentedVoiceInputModePillInactive } from '../../browser/voiceInputMode/voiceInputModeContextKeys.js';
@@ -63,6 +65,7 @@ const VoiceChatSessionContexts: VoiceChatSessionContext[] = ['view', 'inline', '
 
 // Global Context Keys (set on global context key service)
 const CanVoiceChat = ContextKeyExpr.and(ChatContextKeys.enabled, HasSpeechProvider);
+const CanReadAloud = ChatContextKeys.enabled; // NOVA: the Nova voice service always exists, no speech provider needed
 const FocusInChatInput = ContextKeyExpr.or(CTX_INLINE_CHAT_FOCUSED, ChatContextKeys.inChatInput);
 
 // Scoped Context Keys (set on per-chat-context scoped context key service)
@@ -706,32 +709,35 @@ class ChatSynthesizerSessions {
 		return ChatSynthesizerSessions.instance;
 	}
 
-	private activeSession: CancellationTokenSource | undefined = undefined;
+	/** NOVA: one speech per chat tab (session), so tabs speak independently. Keyed by session resource. */
+	private readonly activeSessions = new Map<string, CancellationTokenSource>();
 
 	constructor(
-		@ISpeechService private readonly speechService: ISpeechService,
+		@INovaTextToSpeechService private readonly novaTextToSpeechService: INovaTextToSpeechService, // NOVA
 		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService
 	) { }
 
 	async start(controller: IChatSynthesizerSessionController): Promise<void> {
 
-		// Stop running text-to-speech or speech-to-text sessions in chats
-		this.stop();
+		// Stop running text-to-speech in this chat tab (other tabs keep their own) and speech-to-text sessions in chats
+		const sessionKey = controller.response.session.sessionResource.toString(); // NOVA
+		this.stopSession(sessionKey);
 		VoiceChatSessions.getInstance(this.instantiationService).stop();
 
-		const activeSession = this.activeSession = new CancellationTokenSource();
+		const activeSession = new CancellationTokenSource();
+		this.activeSessions.set(sessionKey, activeSession);
 
 		const disposables = new DisposableStore();
 		disposables.add(activeSession.token.onCancellationRequested(() => disposables.dispose()));
 
-		const session = await this.speechService.createTextToSpeechSession(activeSession.token, 'chat');
+		const session = this.novaTextToSpeechService.createSession(activeSession.token); // NOVA
 
 		if (activeSession.token.isCancellationRequested) {
 			return;
 		}
 
-		disposables.add(controller.onDidHideChat(() => this.stop()));
+		disposables.add(controller.onDidHideChat(() => this.stopSession(sessionKey))); // NOVA
 
 		const scopedChatToSpeechInProgress = ScopedChatSynthesisInProgress.bindTo(controller.contextKeyService);
 		disposables.add(toDisposable(() => scopedChatToSpeechInProgress.reset()));
@@ -754,6 +760,8 @@ class ChatSynthesizerSessions {
 
 			await raceCancellation(session.synthesize(chunk), activeSession.token);
 		}
+
+		session.finish(); // NOVA: the answer is complete, stop once the queued audio has played
 	}
 
 	private async *nextChatResponseChunk(response: IChatResponseModel, token: CancellationToken): AsyncIterable<string> {
@@ -778,7 +786,9 @@ class ChatSynthesizerSessions {
 				return;
 			}
 
-			if (!complete && responseLength === response.response.toString().length) {
+			// NOVA: `isComplete` is read again because the consumer may have spent a long time (waiting for its turn to speak)
+			// while the response completed. Waiting for a change that already happened would never end.
+			if (!complete && !response.isComplete && responseLength === response.response.toString().length) {
 				await raceCancellation(Event.toPromise(response.onDidChange), token); // wait for the response to change
 			}
 		} while (!token.isCancellationRequested && !complete);
@@ -820,9 +830,16 @@ class ChatSynthesizerSessions {
 			.join('\n');
 	}
 
+	/** Stops the speech of every chat tab. */
 	stop(): void {
-		this.activeSession?.dispose(true);
-		this.activeSession = undefined;
+		for (const key of [...this.activeSessions.keys()]) {
+			this.stopSession(key);
+		}
+	}
+
+	private stopSession(sessionKey: string): void { // NOVA
+		this.activeSessions.get(sessionKey)?.dispose(true);
+		this.activeSessions.delete(sessionKey);
 	}
 }
 
@@ -855,11 +872,11 @@ export class ReadChatResponseAloud extends Action2 {
 			id: 'workbench.action.chat.readChatResponseAloud',
 			title: localize2('workbench.action.chat.readChatResponseAloud', "Read Aloud"),
 			icon: Codicon.unmute,
-			precondition: CanVoiceChat,
+			precondition: CanReadAloud, // NOVA
 			menu: [{
 				id: MenuId.ChatMessageFooter,
 				when: ContextKeyExpr.and(
-					CanVoiceChat,
+					CanReadAloud, // NOVA
 					ChatContextKeys.isResponse,						// only for responses
 					ScopedChatSynthesisInProgress.negate(),			// but not when already in progress
 					ChatContextKeys.responseIsFiltered.negate(),	// and not when response is filtered
@@ -869,7 +886,7 @@ export class ReadChatResponseAloud extends Action2 {
 			}, {
 				id: MENU_INLINE_CHAT_WIDGET_SECONDARY,
 				when: ContextKeyExpr.and(
-					CanVoiceChat,
+					CanReadAloud, // NOVA
 					ChatContextKeys.isResponse,						// only for responses
 					ScopedChatSynthesisInProgress.negate(),			// but not when already in progress
 					ChatContextKeys.responseIsFiltered.negate()		// and not when response is filtered
@@ -923,6 +940,72 @@ export class ReadChatResponseAloud extends Action2 {
 
 		const controller = ChatSynthesizerSessionController.create(accessor, 'focused', response.model);
 		ChatSynthesizerSessions.getInstance(instantiationService).start(controller);
+	}
+}
+
+// NOVA: reading an answer aloud without the Read Aloud button (automatic speech).
+export function readChatResponseAloud(accessor: ServicesAccessor, response: IChatResponseModel): void {
+	const controller = ChatSynthesizerSessionController.create(accessor, 'focused', response);
+	ChatSynthesizerSessions.getInstance(accessor.get(IInstantiationService)).start(controller);
+}
+
+// NOVA: gear next to Read Aloud to pick the voice (Piper or a cloud provider).
+export class ConfigureNovaVoice extends Action2 {
+	constructor() {
+		super({
+			id: CONFIGURE_NOVA_TTS_COMMAND_ID,
+			title: localize2('nova.tts.configureAction', "Configure Voice"),
+			icon: Codicon.settingsGear,
+			f1: true,
+			category: CHAT_CATEGORY,
+			menu: [{
+				id: MenuId.ChatMessageFooter,
+				when: ContextKeyExpr.and(CanReadAloud, ChatContextKeys.isResponse, ChatContextKeys.responseIsFiltered.negate()),
+				group: 'navigation',
+				order: -9 // right after Read Aloud
+			}]
+		});
+	}
+
+	async run(accessor: ServicesAccessor): Promise<void> {
+		await accessor.get(INovaTextToSpeechService).configure();
+	}
+}
+
+// NOVA: turns automatic speech on or off for the current chat tab only.
+export class ToggleNovaAutoSpeak extends Action2 {
+	constructor() {
+		super({
+			id: 'nova.tts.toggleAutoSpeak',
+			title: localize2('nova.tts.toggleAutoSpeak', "Toggle Automatic Speech of Answers in This Chat"),
+			icon: Codicon.unmute,
+			toggled: { condition: NovaAutoSpeakOn, tooltip: localize('nova.tts.autoSpeakTooltipOn', "Automatic speech is on for this chat. Click to turn it off.") },
+			tooltip: localize('nova.tts.autoSpeakTooltipOff', "Read answers of this chat aloud automatically"),
+			f1: true,
+			category: CHAT_CATEGORY,
+			precondition: ChatContextKeys.enabled,
+			menu: [{
+				id: MenuId.ChatExecute,
+				order: -11,
+				when: ChatContextKeys.enabled,
+				group: 'navigation',
+			}]
+		});
+	}
+
+	async run(accessor: ServicesAccessor, ...args: unknown[]): Promise<void> {
+		const service = accessor.get(INovaTextToSpeechService);
+		const context = args[0] as IChatExecuteActionContext | undefined;
+		const widget = context?.widget ?? accessor.get(IChatWidgetService).lastFocusedWidget;
+		const sessionResource = widget?.viewModel?.sessionResource;
+		if (!sessionResource) {
+			return;
+		}
+		const enabled = !service.isAutoSpeakEnabled(sessionResource);
+		service.setAutoSpeak(sessionResource, enabled);
+		accessor.get(INotificationService).status(enabled
+			? localize('nova.tts.autoSpeakOn', "Answers of this chat are now read aloud automatically.")
+			: localize('nova.tts.autoSpeakOff', "Answers of this chat are no longer read aloud automatically."), { hideAfter: 3000 });
 	}
 }
 

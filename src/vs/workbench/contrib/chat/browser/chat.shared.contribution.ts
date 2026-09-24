@@ -431,6 +431,73 @@ configurationRegistry.registerConfiguration({
 			default: 'gemini-flash-latest',
 			markdownDescription: nls.localize('nova.dictation.googleModel', "Gemini model used for dictation."),
 		},
+		// NOVA: text to speech (Read Aloud and automatic speech). Keys and secrets live in the secret storage, never here.
+		'nova.tts.provider': {
+			type: 'string',
+			enum: ['piper', 'azure', 'google', 'elevenlabs', 'amazon'],
+			default: 'piper',
+			enumDescriptions: [
+				nls.localize('nova.tts.provider.piper', "Piper: local, offline and free. Downloads the voice once."),
+				nls.localize('nova.tts.provider.azure', "Microsoft Azure Speech (your own key)."),
+				nls.localize('nova.tts.provider.google', "Google Cloud Text-to-Speech (your own key)."),
+				nls.localize('nova.tts.provider.elevenlabs', "ElevenLabs (your own key)."),
+				nls.localize('nova.tts.provider.amazon', "Amazon Polly (your own AWS keys)."),
+			],
+			markdownDescription: nls.localize('nova.tts.provider', "Voice used to read chat answers aloud. Use the gear button next to Read Aloud, or the command **Configure Voice**, to change it and to save the key."),
+		},
+		'nova.tts.autoSpeak': {
+			type: 'boolean',
+			default: false,
+			markdownDescription: nls.localize('nova.tts.autoSpeak', "Default for chat tabs where you did not choose yet: read new answers aloud automatically. Each chat tab has its own toggle in the chat input, and the answers of different tabs never talk over each other."),
+		},
+		'nova.tts.speed': {
+			type: 'number',
+			default: 1,
+			minimum: 0.5,
+			maximum: 2,
+			markdownDescription: nls.localize('nova.tts.speed', "Speaking speed of the voice. 1 is normal."),
+		},
+		'nova.tts.language': {
+			type: 'string',
+			default: 'pt-BR',
+			markdownDescription: nls.localize('nova.tts.language', "Language of the text read aloud, for example `pt-BR` or `en-US`. The voice of each provider has to speak this language."),
+		},
+		'nova.tts.piper.voice': {
+			type: 'string',
+			enum: ['pt_BR-faber-medium', 'pt_BR-cadu-medium', 'pt_BR-jeff-medium'],
+			default: 'pt_BR-faber-medium',
+			markdownDescription: nls.localize('nova.tts.piper.voice', "Piper voice."),
+		},
+		'nova.tts.azure.voice': {
+			type: 'string',
+			default: 'pt-BR-FranciscaNeural',
+			markdownDescription: nls.localize('nova.tts.azure.voice', "Azure voice name, for example `pt-BR-FranciscaNeural`, `pt-BR-ThalitaNeural` or `pt-BR-AntonioNeural`."),
+		},
+		'nova.tts.azure.region': {
+			type: 'string',
+			default: 'brazilsouth',
+			markdownDescription: nls.localize('nova.tts.azure.region', "Region of your Azure Speech resource."),
+		},
+		'nova.tts.google.voice': {
+			type: 'string',
+			default: 'pt-BR-Chirp3-HD-Aoede',
+			markdownDescription: nls.localize('nova.tts.google.voice', "Google voice name, for example `pt-BR-Chirp3-HD-Aoede` or `pt-BR-Neural2-A`."),
+		},
+		'nova.tts.elevenlabs.voice': {
+			type: 'string',
+			default: '21m00Tcm4TlvDq8ikWAM',
+			markdownDescription: nls.localize('nova.tts.elevenlabs.voice', "ElevenLabs voice id, from your voice library."),
+		},
+		'nova.tts.amazon.voice': {
+			type: 'string',
+			default: 'Camila',
+			markdownDescription: nls.localize('nova.tts.amazon.voice', "Amazon Polly voice, for example `Camila`, `Vitoria` or `Thiago`."),
+		},
+		'nova.tts.amazon.region': {
+			type: 'string',
+			default: 'us-east-1',
+			markdownDescription: nls.localize('nova.tts.amazon.region', "AWS region used for Amazon Polly."),
+		},
 		[DictationSettingId.ShowTranscript]: {
 			type: 'boolean',
 			markdownDescription: nls.localize('dictation.showTranscript', "Controls whether the transcript is shown while dictating. The final transcript is inserted when dictation ends."),

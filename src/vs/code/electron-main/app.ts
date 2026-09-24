@@ -48,6 +48,7 @@ import { getResolvedShellEnv } from '../../platform/shell/node/shellEnv.js';
 import { IExtensionHostStarter, ipcExtensionHostStarterChannelName } from '../../platform/extensions/common/extensionHostStarter.js';
 import { ExtensionHostStarter } from '../../platform/extensions/electron-main/extensionHostStarter.js';
 import { IExternalTerminalMainService } from '../../platform/externalTerminal/electron-main/externalTerminal.js';
+import { INovaTtsMainService, NovaTtsMainService } from '../../platform/novaTts/electron-main/novaTtsMainService.js'; // NOVA
 import { LinuxExternalTerminalService, MacExternalTerminalService, WindowsExternalTerminalService } from '../../platform/externalTerminal/node/externalTerminalService.js';
 import { ISandboxHelperMainService } from '../../platform/sandbox/electron-main/sandboxHelperService.js';
 import { SandboxHelperService } from '../../platform/sandbox/node/sandboxHelper.js';
@@ -1289,6 +1290,9 @@ export class CodeApplication extends Disposable {
 		}
 		services.set(ISandboxHelperMainService, new SyncDescriptor(SandboxHelperService));
 
+		// Text to speech (NOVA)
+		services.set(INovaTtsMainService, new SyncDescriptor(NovaTtsMainService));
+
 		// Backups
 		const backupMainService = new BackupMainService(this.environmentMainService, this.configurationService, this.logService, this.stateService);
 		services.set(IBackupMainService, backupMainService);
@@ -1464,6 +1468,10 @@ export class CodeApplication extends Disposable {
 		// External Terminal
 		const externalTerminalChannel = ProxyChannel.fromService(accessor.get(IExternalTerminalMainService), disposables);
 		mainProcessElectronServer.registerChannel('externalTerminal', externalTerminalChannel);
+
+		// Text to speech (NOVA)
+		const novaTtsChannel = ProxyChannel.fromService(accessor.get(INovaTtsMainService), disposables);
+		mainProcessElectronServer.registerChannel('novaTts', novaTtsChannel);
 
 		// Sandbox Helper
 		const sandboxHelperChannel = ProxyChannel.fromService(accessor.get(ISandboxHelperMainService), disposables);
