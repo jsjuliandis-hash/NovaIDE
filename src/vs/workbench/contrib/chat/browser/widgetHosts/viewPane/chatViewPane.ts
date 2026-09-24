@@ -39,6 +39,7 @@ import { IWorkspaceContextService } from '../../../../../../platform/workspace/c
 import { defaultButtonStyles } from '../../../../../../platform/theme/browser/defaultStyles.js';
 import { editorBackground } from '../../../../../../platform/theme/common/colorRegistry.js';
 import { ChatViewTitleControl } from './chatViewTitleControl.js';
+import { ChatViewTabs, ChatViewTabsWidget, IChatViewTabsHost } from './chatViewTabs.js'; // NOVA
 import { IThemeService } from '../../../../../../platform/theme/common/themeService.js';
 import { isDark } from '../../../../../../platform/theme/common/theme.js';
 import { IAccessibilityService } from '../../../../../../platform/accessibility/common/accessibility.js';
@@ -109,7 +110,7 @@ type ChatViewPaneOpenedClassification = {
 	comment: 'Event fired when the chat view pane is opened';
 };
 
-export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
+export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate, IChatViewTabsHost {
 
 	private readonly memento: Memento<IChatViewPaneState>;
 	private readonly viewState: IChatViewPaneState;
@@ -139,6 +140,9 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 	 * open (e.g. this pane plus a chat editor) only the focused one lights up.
 	 */
 	private _focusedSessionResource!: IObservable<URI | undefined>;
+
+	/** NOVA: tabs that keep several sessions open (and running) in this view. */
+	readonly chatTabs: ChatViewTabs;
 
 	constructor(
 		options: IViewPaneOptions,
@@ -193,6 +197,11 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 			this.viewState.sessionId = undefined;
 			this.viewState.sessionResource = undefined;
 		}
+		// NOVA: chat tabs, restored together with the last session
+		this.chatTabs = this._register(this.instantiationService.createInstance(ChatViewTabs, {
+			loadSession: resource => this.loadSession(resource),
+			newSession: () => this.clear(),
+		}, !!(this.viewState.sessionResource || this.viewState.sessionId)));
 		this.sessionsViewerVisible = false; // will be updated from layout code
 		this.sessionsViewerSidebarWidth = Math.max(ChatViewPane.SESSIONS_SIDEBAR_MIN_WIDTH, this.viewState.sessionsSidebarWidth ?? ChatViewPane.SESSIONS_SIDEBAR_DEFAULT_WIDTH);
 
@@ -365,6 +374,9 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		this.viewPaneContainer = parent;
 		this.viewPaneContainer.classList.add('chat-viewpane');
 		this.updateViewPaneClasses(false);
+
+		// NOVA: chat tabs row
+		this._register(this.instantiationService.createInstance(ChatViewTabsWidget, append(parent, $('.nova-chat-tabs-row')), this.chatTabs));
 
 		// Controls wrapper — sessions + chat live inside here
 		const controlsWrapper = append(parent, $('.voice-agent-controls-wrapper'));
@@ -1133,6 +1145,7 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 		this._register(chatWidget.onDidChangeViewModel(() => {
 			const model = chatWidget.viewModel?.model;
 			this.titleControl?.update(model);
+			this.chatTabs.onDidShowSession(model); // NOVA
 			this._currentSessionResource.set(chatWidget.viewModel?.sessionResource, undefined);
 
 			if (this.sessionsViewerOrientation === AgentSessionsViewerOrientation.Stacked) {
@@ -1595,7 +1608,7 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate {
 	}
 
 	private layoutChatAndSessions(height: number, width: number, layoutInput: boolean): void {
-		let remainingHeight = height;
+		let remainingHeight = height - ChatViewTabsWidget.HEIGHT; // NOVA: chat tabs row
 		const remainingWidth = width;
 
 		// Voice bar is now inside the input container, no separate height deduction needed

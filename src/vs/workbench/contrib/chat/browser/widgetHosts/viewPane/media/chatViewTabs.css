@@ -1,0 +1,129 @@
+/*---------------------------------------------------------------------------------------------
+ *  Nova IDE — chat tabs, a row at the top of the Chat view
+ *-------------------------------------------------------------------------------------------*/
+
+.chat-viewpane > .nova-chat-tabs-row {
+	flex: 0 0 auto;
+	min-width: 0;
+	padding: 0 8px;
+	box-sizing: border-box;
+}
+
+.nova-chat-tabs {
+	display: flex;
+	align-items: center;
+	box-sizing: border-box;
+	min-width: 0;
+	gap: 2px;
+}
+
+.nova-chat-tabs-strip {
+	display: flex;
+	align-items: center;
+	gap: 2px;
+	min-width: 0;
+	overflow-x: auto;
+	overflow-y: hidden;
+	scrollbar-width: none;
+}
+
+.nova-chat-tabs-strip::-webkit-scrollbar {
+	display: none;
+}
+
+.nova-chat-tab {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	flex: 0 1 auto;
+	min-width: 48px;
+	max-width: 160px;
+	height: 22px;
+	padding: 0 4px 0 6px;
+	border-radius: var(--vscode-cornerRadius-small, 4px);
+	color: var(--vscode-tab-inactiveForeground, var(--vscode-foreground));
+	font-size: 12px;
+	line-height: 22px;
+	white-space: nowrap;
+	cursor: pointer;
+	outline-offset: -1px;
+	box-sizing: border-box;
+}
+
+.nova-chat-tab:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.nova-chat-tab.active {
+	color: var(--vscode-tab-activeForeground, var(--vscode-foreground));
+	background-color: var(--vscode-toolbar-activeBackground, var(--vscode-toolbar-hoverBackground));
+	box-shadow: inset 0 -1px 0 var(--vscode-focusBorder);
+}
+
+.nova-chat-tab-icon {
+	flex: 0 0 auto;
+	font-size: 14px;
+}
+
+.nova-chat-tab.needs-input .nova-chat-tab-icon {
+	color: var(--vscode-editorWarning-foreground);
+}
+
+.nova-chat-tab-label {
+	flex: 1 1 auto;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+/* "Finished while you were away" marker; shares the slot with the close button */
+.nova-chat-tab-dot {
+	display: none;
+	flex: 0 0 auto;
+	width: 6px;
+	height: 6px;
+	margin: 0 5px;
+	border-radius: 50%;
+	background-color: var(--vscode-activityBarBadge-background, var(--vscode-focusBorder));
+}
+
+.nova-chat-tab.unseen:not(:hover) .nova-chat-tab-dot {
+	display: block;
+}
+
+.nova-chat-tab-close {
+	flex: 0 0 auto;
+	visibility: hidden;
+	padding: 1px;
+	font-size: 12px;
+	border-radius: var(--vscode-cornerRadius-small, 3px);
+}
+
+.nova-chat-tab.unseen:not(:hover) .nova-chat-tab-close {
+	display: none;
+}
+
+.nova-chat-tab.active .nova-chat-tab-close,
+.nova-chat-tab:hover .nova-chat-tab-close {
+	visibility: visible;
+}
+
+.nova-chat-tab-close:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
+.nova-chat-tabs-add {
+	flex: 0 0 auto;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: var(--vscode-cornerRadius-small, 4px);
+	color: var(--vscode-icon-foreground);
+	cursor: pointer;
+}
+
+.nova-chat-tabs-add:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
