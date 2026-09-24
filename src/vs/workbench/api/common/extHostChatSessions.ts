@@ -25,7 +25,7 @@ import { getChatSessionType, isUntitledChatSession } from '../../contrib/chat/co
 import { IChatAgentRequest, IChatAgentResult } from '../../contrib/chat/common/participants/chatAgents.js';
 import { Proxied } from '../../services/extensions/common/proxyIdentifier.js';
 import { ChatSessionContentContextDto, ExtHostChatSessionsShape, IChatAgentProgressShape, IChatNewSessionRequestDto, IChatSessionDto, IChatSessionProviderOptions, IChatSessionRequestHistoryItemDto, MainContext, MainThreadChatSessionsShape } from './extHost.protocol.js';
-import { ChatAgentResponseStream } from './extHostChatAgents2.js';
+import { ChatAgentResponseStream, unavailableLanguageModel } from './extHostChatAgents2.js';
 import { CommandsConverter, ExtHostCommands } from './extHostCommands.js';
 import { ExtHostLanguageModels } from './extHostLanguageModels.js';
 import { IExtHostRpcService } from './extHostRpcService.js';
@@ -1035,7 +1035,7 @@ export class ExtHostChatSessions extends Disposable implements ExtHostChatSessio
 		if (!model) {
 			model = await this._languageModels.getDefaultLanguageModel(extension);
 			if (!model) {
-				throw new Error('Language model unavailable');
+				return unavailableLanguageModel; // NOVA: see unavailableLanguageModel
 			}
 		}
 

@@ -41,6 +41,22 @@ import { PromptsType } from '../../contrib/chat/common/promptSyntax/promptTypes.
 import { ExtHostChatSessions } from './extHostChatSessions.js';
 import { ExtHostDocumentsAndEditors } from './extHostDocumentsAndEditors.js';
 
+/**
+ * NOVA: stand-in `request.model` when no language model is registered. Agents that run their own
+ * models (ACP chat sessions) never touch it; anything that does gets a clear error.
+ */
+export const unavailableLanguageModel: vscode.LanguageModelChat = Object.freeze({
+	id: 'nova.unavailable',
+	name: 'Unavailable',
+	vendor: 'nova',
+	family: 'unavailable',
+	version: '0',
+	maxInputTokens: 0,
+	capabilities: { supportsToolCalling: false, supportsImageToText: false },
+	sendRequest: () => Promise.reject(new Error('Language model unavailable')),
+	countTokens: () => Promise.resolve(0),
+});
+
 export class ChatAgentResponseStream {
 
 	private _stopWatch = StopWatch.create(false);
@@ -954,7 +970,9 @@ export class ExtHostChatAgents2 extends Disposable implements ExtHostChatAgentsS
 		if (!model) {
 			model = await this._languageModels.getDefaultLanguageModel(extension);
 			if (!model) {
-				throw new Error('Language model unavailable');
+				// NOVA: external agents (chat sessions) bring their own models, so a request must not
+				// fail just because no VS Code language model is registered (e.g. no Copilot).
+				return unavailableLanguageModel;
 			}
 		}
 

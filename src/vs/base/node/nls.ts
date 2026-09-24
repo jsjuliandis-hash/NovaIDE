@@ -209,16 +209,18 @@ interface INovaLocalizationManifest {
 
 /**
  * NOVA: builds language pack configurations from the language pack extensions shipped in
- * `<appRoot>/extensions` (see `builtInExtensions` in product.json).
+ * `<appRoot>/extensions` (see `builtInExtensions` in product.json). Built-in extensions that
+ * ship their own `i18n/<language>.i18n.json` (the Nova extensions) are added to the pack.
  */
 async function getNovaBuiltinLanguagePacks(nlsMetadataPath: string): Promise<ILanguagePacks | undefined> {
 	const extensionsPath = join(nlsMetadataPath, '..', 'extensions');
-	let folders: string[];
+	let allFolders: string[];
 	try {
-		folders = (await promises.readdir(extensionsPath)).filter(folder => /language-pack/i.test(folder));
+		allFolders = await promises.readdir(extensionsPath);
 	} catch {
 		return undefined;
 	}
+	const folders = allFolders.filter(folder => /language-pack/i.test(folder));
 
 	const languagePacks: Record<string, ILanguagePack> = {};
 	for (const folder of folders) {
@@ -236,14 +238,30 @@ async function getNovaBuiltinLanguagePacks(nlsMetadataPath: string): Promise<ILa
 			if (!localization.languageId || !localization.translations?.length) {
 				continue;
 			}
+			const languageId = localization.languageId.toLowerCase();
 			const translations: Record<string, string> = {};
 			for (const translation of localization.translations) {
 				if (translation.id && translation.path) {
 					translations[translation.id] = join(extensionPath, translation.path);
 				}
 			}
-			languagePacks[localization.languageId.toLowerCase()] = {
-				hash: `nova-builtin-${version}`.replace(/[^\w.-]/g, '_'),
+			const bundled: string[] = [];
+			for (const other of allFolders) {
+				const i18nFile = join(extensionsPath, other, 'i18n', `${languageId}.i18n.json`);
+				if (!await Promises.exists(i18nFile)) {
+					continue;
+				}
+				try {
+					const otherManifest: INovaLocalizationManifest = JSON.parse(await promises.readFile(join(extensionsPath, other, 'package.json'), 'utf-8'));
+					translations[`${otherManifest.publisher}.${otherManifest.name}`] = i18nFile;
+					bundled.push(`${otherManifest.name}@${otherManifest.version}`);
+				} catch {
+					// not an extension folder
+				}
+			}
+			languagePacks[languageId] = {
+				// the hash names the translation cache folder, so it must change when the bundled extensions do
+				hash: `nova-builtin-${version}-${simpleHash(bundled.join(','))}`.replace(/[^\w.-]/g, '_'),
 				label: localization.localizedLanguageName ?? localization.languageName,
 				extensions: [{ extensionIdentifier: { id }, version }],
 				translations
@@ -252,6 +270,14 @@ async function getNovaBuiltinLanguagePacks(nlsMetadataPath: string): Promise<ILa
 	}
 
 	return Object.keys(languagePacks).length ? languagePacks : undefined;
+}
+
+function simpleHash(value: string): string {
+	let hash = 5381;
+	for (let i = 0; i < value.length; i++) {
+		hash = ((hash << 5) + hash + value.charCodeAt(i)) | 0;
+	}
+	return (hash >>> 0).toString(16);
 }
 
 function resolveLanguagePackLanguage(languagePacks: ILanguagePacks, locale: string | undefined): string | undefined {

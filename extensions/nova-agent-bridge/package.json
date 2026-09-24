@@ -1,0 +1,76 @@
+{
+  "name": "nova-agent-bridge",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.1.0",
+  "private": true,
+  "publisher": "nova-ide",
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "AI",
+    "Chat"
+  ],
+  "enabledApiProposals": [
+    "chatSessionsProvider"
+  ],
+  "capabilities": {
+    "virtualWorkspaces": false,
+    "untrustedWorkspaces": {
+      "supported": false
+    }
+  },
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension",
+  "contributes": {
+    "chatSessions": [
+      {
+        "type": "nova-opencode",
+        "name": "opencode",
+        "displayName": "OpenCode",
+        "description": "%chatSessions.opencode.description%",
+        "icon": "$(sparkle)",
+        "welcomeTitle": "OpenCode",
+        "welcomeMessage": "%chatSessions.opencode.welcomeMessage%",
+        "inputPlaceholder": "%chatSessions.opencode.inputPlaceholder%",
+        "order": 5,
+        "canDelegate": true,
+        "supportsAutoModel": true,
+        "capabilities": {
+          "supportsFileAttachments": true
+        }
+      }
+    ],
+    "commands": [
+      {
+        "command": "novaAgentBridge.showLog",
+        "title": "%command.showLog%",
+        "category": "Nova"
+      }
+    ],
+    "configuration": {
+      "title": "%configuration.title%",
+      "properties": {
+        "nova.agents.opencode.command": {
+          "type": "string",
+          "default": "opencode",
+          "description": "%configuration.opencode.command%"
+        },
+        "nova.agents.opencode.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "acp"
+          ],
+          "description": "%configuration.opencode.args%"
+        }
+      }
+    }
+  }
+}

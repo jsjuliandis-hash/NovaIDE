@@ -1,0 +1,11 @@
+{
+	"displayName": "Nova Agent Bridge",
+	"description": "Runs external CLI agents (Agent Client Protocol) in the background and talks to them through the Chat view.",
+	"chatSessions.opencode.description": "OpenCode agent running in the background (opencode acp)",
+	"chatSessions.opencode.welcomeMessage": "Chat with OpenCode. It runs locally with your own opencode account and models.",
+	"chatSessions.opencode.inputPlaceholder": "Ask OpenCode to build, fix or explain something",
+	"command.showLog": "Nova Agents: Show Log",
+	"configuration.title": "Nova Agents",
+	"configuration.opencode.command": "Command used to start OpenCode.",
+	"configuration.opencode.args": "Arguments passed to the OpenCode command to start its Agent Client Protocol server."
+}

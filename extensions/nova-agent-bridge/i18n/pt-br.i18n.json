@@ -1,0 +1,34 @@
+{
+	"version": "1.0.0",
+	"contents": {
+		"package": {
+			"displayName": "Nova Agent Bridge",
+			"description": "Executa agentes CLI externos (Agent Client Protocol) em segundo plano e conversa com eles pelo Chat.",
+			"chatSessions.opencode.description": "Agente OpenCode rodando em segundo plano (opencode acp)",
+			"chatSessions.opencode.welcomeMessage": "Converse com o OpenCode. Ele roda localmente com a sua conta e os seus modelos do opencode.",
+			"chatSessions.opencode.inputPlaceholder": "Peça ao OpenCode para criar, corrigir ou explicar algo",
+			"command.showLog": "Nova Agents: Mostrar Log",
+			"configuration.title": "Nova Agents",
+			"configuration.opencode.command": "Comando usado para iniciar o OpenCode.",
+			"configuration.opencode.args": "Argumentos passados ao comando do OpenCode para iniciar o servidor Agent Client Protocol."
+		},
+		"bundle": {
+			"The agent process exited (code {0}).": "O processo do agente foi encerrado (código {0}).",
+			"The agent process is not running.": "O processo do agente não está em execução.",
+			"The agent connection was closed.": "A conexão com o agente foi fechada.",
+			"Start a new {0} session from the session picker to talk to the agent.": "Inicie uma nova sessão do {0} pelo seletor de sessões para conversar com o agente.",
+			"Connecting to {0}…": "Conectando ao {0}…",
+			"Thinking…": "Pensando…",
+			"_The agent refused to continue._": "_O agente se recusou a continuar._",
+			"_The agent stopped: limit reached ({0})._": "_O agente parou: limite atingido ({0})._",
+			"Tool failed: {0}": "Falha na ferramenta: {0}",
+			"Plan: {0} of {1} steps left": "Plano: faltam {0} de {1} etapas",
+			"{0} is not signed in. Run `{1}` in a terminal and try again.": "O {0} não está conectado a uma conta. Rode `{1}` em um terminal e tente de novo.",
+			"Could not start `{0}`. Install it or set `{1}.command` in the settings.": "Não foi possível iniciar o `{0}`. Instale-o ou defina `{1}.command` nas configurações.",
+			"{0} wants to run: {1}": "O {0} quer executar: {1}",
+			"Model": "Modelo",
+			"Mode": "Modo",
+			"Effort": "Esforço"
+		}
+	}
+}
