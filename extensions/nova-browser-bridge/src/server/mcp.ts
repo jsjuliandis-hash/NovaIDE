@@ -11,11 +11,13 @@ import * as z from 'zod';
 import { DevServerManager } from '../devServer/devServerManager';
 import { NovaBrowser } from '../novaBrowser';
 import { ensureEvaluateAllowed } from './security';
+import { NOVA_IDE_MCP_INSTRUCTIONS, registerIdeTools } from './ideTools';
 
 const pageIdSchema = z.string().describe('Page id returned by browser_list_pages or browser_open.');
 
 export function buildMcpServer(novaBrowser: NovaBrowser, devServerManager: DevServerManager): McpServer {
-	const server = new McpServer({ name: 'nova-browser-bridge', version: '0.1.0' });
+	const server = new McpServer({ name: 'nova-browser-bridge', version: '0.1.0' }, { instructions: NOVA_IDE_MCP_INSTRUCTIONS });
+	registerIdeTools(server);
 
 	server.registerTool(
 		'browser_list_pages',

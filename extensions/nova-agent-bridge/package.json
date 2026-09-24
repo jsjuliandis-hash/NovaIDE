@@ -103,6 +103,11 @@
     "configuration": {
       "title": "%configuration.title%",
       "properties": {
+        "nova.agents.injectIdeManual": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.injectIdeManual%"
+        },
         "nova.agents.opencode.command": {
           "type": "string",
           "default": "opencode",

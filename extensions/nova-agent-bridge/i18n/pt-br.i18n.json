@@ -25,7 +25,8 @@
 			"configuration.codex.command": "Comando usado para iniciar o adaptador ACP do Codex.",
 			"configuration.codex.args": "Argumentos do comando do adaptador ACP do Codex.",
 			"configuration.gemini.command": "Comando usado para iniciar o Gemini CLI.",
-			"configuration.gemini.args": "Argumentos passados ao Gemini CLI para iniciar o modo Agent Client Protocol."
+			"configuration.gemini.args": "Argumentos passados ao Gemini CLI para iniciar o modo Agent Client Protocol.",
+			"configuration.injectIdeManual": "Envia o manual da Nova IDE (como abrir arquivos e imagens, usar o navegador integrado etc.) a cada agente no início de cada sessão, para ele saber usar a IDE."
 		},
 		"bundle": {
 			"The agent process exited (code {0}).": "O processo do agente foi encerrado (código {0}).",

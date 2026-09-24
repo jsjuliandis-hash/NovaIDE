@@ -1,0 +1,54 @@
+---
+name: nova-ide
+description: How to work inside Nova IDE. Use it to open files and images in the IDE, drive the integrated browser, show diffs and cooperate with the user through the Chat panel.
+---
+
+# Working inside Nova IDE
+
+You are running inside **Nova IDE**, a desktop IDE based on VS Code. The user talks to you through the **Chat panel** on the side of the editor. You have no window of your own: everything the user should see has to be shown *in the IDE*, with the tools below. These tools come from the MCP server called `nova-browser` (their names may be prefixed by the client, e.g. `nova-browser_ide_open_file`).
+
+## Showing things to the user
+
+| I want to... | Use |
+|---|---|
+| Show an **image** (png, jpg, gif, webp, bmp, ico, svg) | `ide_open_file` — it opens in the IDE's built-in image viewer |
+| Show a source file, optionally at a line | `ide_open_file` with `line` (and `column`) |
+| Show a Markdown file rendered | `ide_open_file` with `mode: "preview"` |
+| Put a file next to the current editor | `ide_open_file` with `beside: true` |
+| Show what changed between two files | `ide_show_diff` |
+| Show a web page, a running app or a local site | `browser_open` (Integrated Browser) |
+| Read this manual again | `ide_manual` |
+
+Rules:
+- To show something to the user **always use `ide_open_file`**. Never launch an external program or browser for it (`start`, `open`, `xdg-open`, `explorer`, `code`, ...), never open an image with `browser_open` and a `file://` URL, and never print an image's bytes or "open" it with `cat`/`type` in a terminal.
+- If *you* need to look at an image, read the file with your own file/image reading tool. `ide_open_file` is for the *user's* eyes.
+- Paths may be absolute or relative to the workspace folder.
+- Do not tell the user to open something by hand when a tool can do it.
+
+## Integrated Browser
+
+Web pages open in tabs of the IDE's Integrated Browser and you can drive them:
+1. `browser_open` a URL (use `reuse: true` to reuse a page on the same host). It returns a page id.
+2. `browser_snapshot` before acting: it lists the page as an accessibility tree with `aria-ref` handles you can pass to `browser_click` / `browser_type`.
+3. `browser_screenshot` only when you truly need to *see* the page. Prefer the snapshot.
+4. After editing source files of a running app, call `browser_wait_for_reload`: it waits for the dev server's hot reload and returns the fresh snapshot and a screenshot.
+5. `browser_console` shows console messages and errors; `browser_run_playwright` runs Playwright code for anything else (the user must confirm it once per workspace).
+6. `devserver_status` and `devserver_restart` tell whether the project's dev server is running and restart it (it opens the URL in the browser once ready).
+
+## Terminals and CLI
+
+- Integrated terminals already have `NOVA_BROWSER_URL`, `NOVA_BROWSER_MCP_URL`, `NOVA_BROWSER_TOKEN`, `NOVA_BROWSER_CDP_URL` and the `nova-browser` command (`nova-browser pages`, `snapshot`, `screenshot -o file.png`, `click`, `wait-reload`) on the `PATH`.
+- Do not start a second dev server if `devserver_status` says one is running.
+
+## The Chat panel
+
+- The user may have several chat tabs, each with its own agent and model, running at the same time. Do not assume you are the only one editing the workspace; re-read a file before changing it if a lot of time has passed.
+- Your answers are shown as Markdown. Keep them short and mention files with their path so the user can open them.
+- The user can dictate by voice; a request may contain small speech-recognition slips. Ask only when the intent is really unclear.
+- Answer in the language the user writes to you (usually Brazilian Portuguese).
+
+## Checklist before answering
+
+1. Did the user ask to *see* something? Use the matching tool above instead of describing it.
+2. Did I change a web app? Call `browser_wait_for_reload` and check the result.
+3. Did I create an image or document? Offer it with `ide_open_file`.

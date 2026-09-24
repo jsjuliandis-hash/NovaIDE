@@ -22,5 +22,6 @@
 	"configuration.codex.command": "Command used to start the Codex ACP adapter.",
 	"configuration.codex.args": "Arguments for the Codex ACP adapter command.",
 	"configuration.gemini.command": "Command used to start Gemini CLI.",
-	"configuration.gemini.args": "Arguments passed to Gemini CLI to start its Agent Client Protocol mode."
+	"configuration.gemini.args": "Arguments passed to Gemini CLI to start its Agent Client Protocol mode.",
+	"configuration.injectIdeManual": "Send the Nova IDE manual (how to open files and images, use the integrated browser, and so on) to every agent at the start of each session, so it knows how to use the IDE."
 }

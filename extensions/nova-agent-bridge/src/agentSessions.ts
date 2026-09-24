@@ -34,6 +34,8 @@ interface SessionState {
 	item: vscode.ChatSessionItem;
 	/** Current value of each ACP config option (model, effort, mode...) as last sent to the agent. */
 	appliedOptions: Map<string, string>;
+	/** True once the Nova IDE manual has been handed to the agent in this session. */
+	manualSent?: boolean;
 }
 
 /** ACP config options that become pickers in the chat input, in display order: each slot matches an ACP category or one of the known option ids. */
@@ -284,7 +286,14 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		const cancel = token.onCancellationRequested(() => connection.notify('session/cancel', { sessionId: acpSessionId }));
 
 		try {
-			const result = await this.withAuthentication(() => connection.request<AcpPromptResult>('session/prompt', { sessionId: acpSessionId, prompt: toPromptBlocks(request) }));
+			const prompt = toPromptBlocks(request);
+			// The agent is an external process that knows nothing about Nova IDE: hand it the manual once per session.
+			const manual = state.manualSent ? undefined : this.readIdeManual();
+			if (manual) {
+				prompt.unshift({ type: 'text', text: `<nova-ide-manual>\n${manual}\n</nova-ide-manual>` });
+			}
+			state.manualSent = true;
+			const result = await this.withAuthentication(() => connection.request<AcpPromptResult>('session/prompt', { sessionId: acpSessionId, prompt }));
 			for (const file of editedFiles) {
 				stream.reference(vscode.Uri.file(file));
 			}
@@ -302,6 +311,24 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			listener.dispose();
 			cancel.dispose();
 		}
+	}
+
+	/** The Nova IDE manual (SKILL.md) shipped with nova-browser-bridge, or a short built-in summary if it cannot be read. */
+	private readIdeManual(): string | undefined {
+		if (!vscode.workspace.getConfiguration('nova.agents').get<boolean>('injectIdeManual', true)) {
+			return undefined;
+		}
+		try {
+			const extensionPath = vscode.extensions.getExtension('nova-ide.nova-browser-bridge')?.extensionPath;
+			if (extensionPath) {
+				const manual = fs.readFileSync(path.join(extensionPath, 'media', 'nova-ide', 'SKILL.md'), 'utf8');
+				this.log.info(`[${this.agent.label}] sending the Nova IDE manual (${manual.length} characters) with the first prompt`);
+				return manual;
+			}
+		} catch (error) {
+			this.log.warn(`[${this.agent.label}] could not read the Nova IDE manual: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		return FALLBACK_IDE_MANUAL;
 	}
 
 	private async applyOptions(connection: AcpConnection, state: SessionState, inputState: vscode.ChatSessionInputState): Promise<void> {
@@ -525,6 +552,15 @@ function toPromptBlocks(request: vscode.ChatRequest): AcpContentBlock[] {
 	}
 	return blocks;
 }
+
+/** Used only when the full manual cannot be read. */
+const FALLBACK_IDE_MANUAL = [
+	'You are running inside Nova IDE (a VS Code based IDE); the user talks to you through its Chat panel.',
+	'To show a file or an image to the user call the MCP tool ide_open_file (images open in the built-in image viewer).',
+	'Never open files with start/open/xdg-open, an external browser, or a browser with a file:// URL.',
+	'Use ide_show_diff to show changes and the browser_* tools for web pages in the Integrated Browser.',
+	'Call the ide_manual tool for the full guide.',
+].join('\n');
 
 function localizedOptionName(id: string, fallback: string): string {
 	switch (id) {
