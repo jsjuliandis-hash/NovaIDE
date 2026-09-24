@@ -47,7 +47,7 @@ export function getOnboardingStepSubtitle(stepId: OnboardingStepId): string {
  * Ordered step IDs for the onboarding flow.
  */
 export const ONBOARDING_STEPS: readonly OnboardingStepId[] = [
-	OnboardingStepId.SignIn,
+	// NOVA: no GitHub Copilot sign-in step; Nova IDE targets external CLI agents
 	OnboardingStepId.Personalize,
 ];
 

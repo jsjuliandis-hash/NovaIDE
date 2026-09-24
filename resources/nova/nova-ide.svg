@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <title>Nova IDE</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#073642"/><stop offset="1" stop-color="#002B36"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F0C43C"/><stop offset="1" stop-color="#B58900"/>
+    </linearGradient>
+    <linearGradient id="star" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2AA198"/><stop offset="1" stop-color="#268BD2"/>
+    </linearGradient>
+  </defs>
+  <rect x="40" y="40" width="944" height="944" rx="220" fill="url(#bg)" stroke="#586E75" stroke-width="10"/>
+  <path d="M548 150 L300 585 L478 585 L398 880 L712 420 L530 420 L650 150Z" fill="url(#bolt)"/>
+  <path d="M790.0 135.0 Q802.5 247.5 915.0 260.0 Q802.5 272.5 790.0 385.0 Q777.5 272.5 665.0 260.0 Q777.5 247.5 790.0 135.0Z" fill="url(#star)"/>
+</svg>

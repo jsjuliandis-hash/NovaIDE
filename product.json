@@ -226,6 +226,12 @@
 	],
 	"onboardingThemes": [
 		{
+			"id": "solarized-dark",
+			"label": "Solarized Dark",
+			"themeId": "Solarized Dark",
+			"type": "dark"
+		},
+		{
 			"id": "dark-2026",
 			"label": "Dark 2026",
 			"themeId": "Dark 2026",
@@ -236,12 +242,6 @@
 			"label": "Dark High Contrast",
 			"themeId": "Default High Contrast",
 			"type": "hcDark"
-		},
-		{
-			"id": "solarized-dark",
-			"label": "Solarized Dark",
-			"themeId": "Solarized Dark",
-			"type": "dark"
 		},
 		{
 			"id": "light-2026",
