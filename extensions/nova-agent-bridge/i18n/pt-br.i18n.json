@@ -10,7 +10,22 @@
 			"command.showLog": "Nova Agents: Mostrar Log",
 			"configuration.title": "Nova Agents",
 			"configuration.opencode.command": "Comando usado para iniciar o OpenCode.",
-			"configuration.opencode.args": "Argumentos passados ao comando do OpenCode para iniciar o servidor Agent Client Protocol."
+			"configuration.opencode.args": "Argumentos passados ao comando do OpenCode para iniciar o servidor Agent Client Protocol.",
+			"chatSessions.claudeCode.description": "Claude Code rodando em segundo plano (adaptador Agent Client Protocol)",
+			"chatSessions.claudeCode.welcomeMessage": "Converse com o Claude Code. Ele usa o login que você já tem no Claude Code.",
+			"chatSessions.claudeCode.inputPlaceholder": "Peça ao Claude Code para criar, corrigir ou explicar algo",
+			"chatSessions.codex.description": "OpenAI Codex CLI rodando em segundo plano (adaptador Agent Client Protocol)",
+			"chatSessions.codex.welcomeMessage": "Converse com o Codex. No primeiro uso, entre com o ChatGPT ou uma chave de API da OpenAI.",
+			"chatSessions.codex.inputPlaceholder": "Peça ao Codex para criar, corrigir ou explicar algo",
+			"chatSessions.gemini.description": "Google Gemini CLI rodando em segundo plano (--acp)",
+			"chatSessions.gemini.welcomeMessage": "Converse com o Gemini CLI. No primeiro uso, entre com o Google ou uma chave de API do Gemini.",
+			"chatSessions.gemini.inputPlaceholder": "Peça ao Gemini para criar, corrigir ou explicar algo",
+			"configuration.claudeCode.command": "Comando usado para iniciar o adaptador ACP do Claude Code.",
+			"configuration.claudeCode.args": "Argumentos do comando do adaptador ACP do Claude Code.",
+			"configuration.codex.command": "Comando usado para iniciar o adaptador ACP do Codex.",
+			"configuration.codex.args": "Argumentos do comando do adaptador ACP do Codex.",
+			"configuration.gemini.command": "Comando usado para iniciar o Gemini CLI.",
+			"configuration.gemini.args": "Argumentos passados ao Gemini CLI para iniciar o modo Agent Client Protocol."
 		},
 		"bundle": {
 			"The agent process exited (code {0}).": "O processo do agente foi encerrado (código {0}).",
@@ -28,7 +43,12 @@
 			"{0} wants to run: {1}": "O {0} quer executar: {1}",
 			"Model": "Modelo",
 			"Mode": "Modo",
-			"Effort": "Esforço"
+			"Effort": "Esforço",
+			"Sign in to {0}": "Entrar no {0}",
+			"Choose how {0} should authenticate": "Escolha como o {0} deve se autenticar",
+			"{0}: {1}": "{0}: {1}",
+			"The key is kept in the secure storage of Nova IDE and passed to {0} as {1}.": "A chave fica no armazenamento seguro da Nova IDE e é passada ao {0} como {1}.",
+			"Signing in to {0}… finish in the browser if it opens.": "Entrando no {0}… conclua no navegador se ele abrir."
 		}
 	}
 }

@@ -9,7 +9,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
-import { AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
+import { AcpAuthMethod, AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
 
 /**
  * Static description of an ACP agent. The chat session `type` must match a `chatSessions`
@@ -22,6 +22,8 @@ export interface AgentDefinition {
 	readonly defaultCommand: string;
 	readonly defaultArgs: readonly string[];
 	readonly loginHint: string;
+	/** Codicon id for the session items and participant. */
+	readonly icon: string;
 }
 
 interface SessionState {
@@ -31,8 +33,19 @@ interface SessionState {
 	appliedOptions: Map<string, string>;
 }
 
-/** ACP config option ids that become pickers in the chat input, in display order (max 2 groups are rendered by the editor; mode is appended when there is room). */
-const PICKER_OPTION_IDS = ['model', 'mode', 'effort'];
+/** ACP config options that become pickers in the chat input, in display order: each slot matches an ACP category or one of the known option ids. */
+const PICKER_SLOTS: readonly { readonly category: string; readonly ids: readonly string[] }[] = [
+	{ category: 'model', ids: ['model'] },
+	{ category: 'mode', ids: ['mode'] },
+	{ category: 'thought_level', ids: ['effort', 'reasoning_effort'] },
+];
+
+/** Option ids used for agents that report models/modes outside of config options. */
+const LEGACY_MODEL_ID = 'acp.model';
+const LEGACY_MODE_ID = 'acp.mode';
+
+/** Environment variable an agent reads for each API key provider ACP reports in `authMethods[]._meta['api-key'].provider`. */
+const API_KEY_ENV: Record<string, string> = { openai: 'OPENAI_API_KEY', google: 'GEMINI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
 
 const TOOL_ICONS: Record<string, string> = {
 	read: '$(file)',
@@ -56,8 +69,9 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	/** A session created ahead of time to discover the config options, reused by the next new chat. */
 	private spareSession: Promise<AcpNewSessionResult> | undefined;
 	private readonly inputStates = new Set<vscode.ChatSessionInputState>();
+	private authMethods: readonly AcpAuthMethod[] = [];
 
-	constructor(private readonly agent: AgentDefinition, private readonly log: vscode.LogOutputChannel) {
+	constructor(private readonly agent: AgentDefinition, private readonly secrets: vscode.SecretStorage, private readonly log: vscode.LogOutputChannel) {
 		this.controller = vscode.chat.createChatSessionItemController(agent.type, async () => {
 			this.controller.items.replace([...this.sessions.values()].map(s => s.item));
 		});
@@ -67,7 +81,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			const resource = vscode.Uri.from({ scheme: agent.type, path: `/${randomId()}` });
 			const label = (context.request.prompt || agent.label).split('\n')[0].slice(0, 80);
 			const item = this.controller.createChatSessionItem(resource, label);
-			item.iconPath = new vscode.ThemeIcon('sparkle');
+			item.iconPath = new vscode.ThemeIcon(agent.icon);
 			item.timing = { created: Date.now() };
 			this.sessions.set(resource.toString(), { acpSessionId: undefined, item, appliedOptions: new Map() });
 			this.controller.items.add(item);
@@ -86,7 +100,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		};
 
 		const participant = vscode.chat.createChatParticipant(agent.type, (request, context, stream, token) => this.handleRequest(request, context, stream, token));
-		participant.iconPath = new vscode.ThemeIcon('sparkle');
+		participant.iconPath = new vscode.ThemeIcon(agent.icon);
 		this.disposables.push(participant);
 		this.disposables.push(vscode.chat.registerChatSessionContentProvider(agent.type, this, participant, { supportsInterruptions: true }));
 	}
@@ -115,26 +129,33 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			const command = config.get<string>('command') || this.agent.defaultCommand;
 			const args = config.get<string[]>('args') ?? [...this.agent.defaultArgs];
 			const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-			this.log.info(`starting ${command} ${args.join(' ')}`);
-			const connection = AcpConnection.start(command, args, cwd, this.createHandlers(), this.log).then(({ connection }) => {
+			this.log.info(`[${this.agent.label}] starting ${command} ${args.join(' ')}`);
+			const connection = this.readApiKeys().then(env => AcpConnection.start(command, args, cwd, env, this.createHandlers(), this.log)).then(({ connection, authMethods }) => {
+				this.authMethods = authMethods;
 				connection.onDidExit(() => {
 					// Sessions live inside the process; forget them so the next request starts over.
-					this.connection = undefined;
-					this.spareSession = undefined;
-					for (const state of this.sessions.values()) {
-						state.acpSessionId = undefined;
-						state.appliedOptions.clear();
+					if (this.connection === pending) {
+						this.restart();
 					}
 				});
 				return connection;
 			});
-			this.connection = connection;
-			connection.catch(() => this.connection = undefined);
+			const pending = connection;
+			this.connection = pending;
+			pending.catch(() => {
+				if (this.connection === pending) {
+					this.connection = undefined;
+				}
+			});
 		}
 		return this.connection;
 	}
 
-	private async newAcpSession(): Promise<AcpNewSessionResult> {
+	private newAcpSession(): Promise<AcpNewSessionResult> {
+		return this.withAuthentication(() => this.doNewAcpSession());
+	}
+
+	private async doNewAcpSession(): Promise<AcpNewSessionResult> {
 		const connection = await this.getConnection();
 		const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
 		const result = await connection.request<AcpNewSessionResult>('session/new', {
@@ -142,15 +163,24 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			cwd: folder.replace(/\\/g, '/'),
 			mcpServers: readNovaBrowserMcpServers()
 		});
-		if (result.configOptions) {
-			this.setConfigOptions(result.configOptions);
+		const options = [...(result.configOptions ?? [])];
+		// Agents that predate config options (e.g. Gemini CLI) report models and modes separately.
+		if (!options.some(o => o.category === 'model' || o.id === 'model') && result.models?.availableModels?.length) {
+			options.push({ id: LEGACY_MODEL_ID, name: 'Model', category: 'model', type: 'select', currentValue: result.models.currentModelId, options: result.models.availableModels.map(m => ({ value: m.modelId, name: m.name, description: m.description })) });
+		}
+		if (!options.some(o => o.category === 'mode' || o.id === 'mode') && result.modes?.availableModes?.length) {
+			options.push({ id: LEGACY_MODE_ID, name: 'Mode', category: 'mode', type: 'select', currentValue: result.modes.currentModeId, options: result.modes.availableModes.map(m => ({ value: m.id, name: m.name, description: m.description })) });
+		}
+		if (options.length) {
+			this.setConfigOptions(options);
 		}
 		return result;
 	}
 
 	private async ensureConfigOptions(): Promise<void> {
 		if (!this.spareSession) {
-			this.spareSession = this.newAcpSession();
+			// Background warm-up: never prompt for sign-in here, only when the user sends a request.
+			this.spareSession = this.doNewAcpSession();
 			this.spareSession.catch(() => this.spareSession = undefined);
 		}
 		await this.spareSession;
@@ -173,8 +203,8 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 
 	private buildGroups(previous: vscode.ChatSessionInputState | undefined): vscode.ChatSessionProviderOptionGroup[] {
 		const groups: vscode.ChatSessionProviderOptionGroup[] = [];
-		for (const id of PICKER_OPTION_IDS) {
-			const option = this.configOptions?.find(o => o.id === id && o.type === 'select' && o.options?.length);
+		for (const slot of PICKER_SLOTS) {
+			const option = this.configOptions?.find(o => o.type === 'select' && o.options?.length && (o.category === slot.category || slot.ids.includes(o.id)));
 			if (!option) {
 				continue;
 			}
@@ -184,9 +214,9 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				description: o.description,
 				default: o.value === option.currentValue
 			}));
-			const previousSelection = previous?.groups.find(g => g.id === id)?.selected;
+			const previousSelection = previous?.groups.find(g => g.id === option.id)?.selected;
 			const selected = items.find(i => i.id === previousSelection?.id) ?? items.find(i => i.default) ?? items[0];
-			groups.push({ id, name: localizedOptionName(id, option.name), items, selected });
+			groups.push({ id: option.id, name: localizedOptionName(slot.category, option.name), items, selected });
 		}
 		return groups;
 	}
@@ -238,7 +268,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		const cancel = token.onCancellationRequested(() => connection.notify('session/cancel', { sessionId: acpSessionId }));
 
 		try {
-			const result = await connection.request<AcpPromptResult>('session/prompt', { sessionId: acpSessionId, prompt: toPromptBlocks(request) });
+			const result = await this.withAuthentication(() => connection.request<AcpPromptResult>('session/prompt', { sessionId: acpSessionId, prompt: toPromptBlocks(request) }));
 			for (const file of editedFiles) {
 				stream.reference(vscode.Uri.file(file));
 			}
@@ -269,7 +299,13 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				state.appliedOptions.set(group.id, value);
 				continue;
 			}
-			await connection.request('session/set_config_option', { sessionId: state.acpSessionId, configId: group.id, value });
+			if (group.id === LEGACY_MODEL_ID) {
+				await connection.request('session/set_model', { sessionId: state.acpSessionId, modelId: value });
+			} else if (group.id === LEGACY_MODE_ID) {
+				await connection.request('session/set_mode', { sessionId: state.acpSessionId, modeId: value });
+			} else {
+				await connection.request('session/set_config_option', { sessionId: state.acpSessionId, configId: group.id, value });
+			}
 			state.appliedOptions.set(group.id, value);
 		}
 	}
@@ -326,13 +362,92 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	private reportError(error: unknown, stream: vscode.ChatResponseStream): vscode.ChatResult {
 		const message = error instanceof Error ? error.message : String(error);
 		this.log.error(message);
-		const isAuth = error instanceof AcpError && (error.code === -32000 || /auth/i.test(message));
+		const isAuth = isAuthError(error);
 		if (isAuth) {
 			stream.markdown(vscode.l10n.t('{0} is not signed in. Run `{1}` in a terminal and try again.', this.agent.label, this.agent.loginHint));
 		} else if (/ENOENT|not recognized|não é reconhecido/i.test(message)) {
 			stream.markdown(vscode.l10n.t('Could not start `{0}`. Install it or set `{1}.command` in the settings.', this.agent.defaultCommand, this.agent.settingsSection));
 		}
 		return { errorDetails: { message } };
+	}
+
+	// --- authentication ----------------------------------------------------------------------
+
+	/** Runs an agent call; when the agent reports it is not signed in, signs in and retries once. */
+	private async withAuthentication<T>(call: () => Promise<T>): Promise<T> {
+		try {
+			return await call();
+		} catch (error) {
+			if (!isAuthError(error) || !this.authMethods.length) {
+				throw error;
+			}
+			this.log.info(`[${this.agent.label}] authentication required: ${error instanceof Error ? error.message : error}`);
+			if (!await this.authenticate()) {
+				throw error;
+			}
+			return call();
+		}
+	}
+
+	private async authenticate(): Promise<boolean> {
+		const methods = this.authMethods;
+		const picked = methods.length === 1 ? methods[0] : (await vscode.window.showQuickPick(
+			methods.map(method => ({ label: method.name, detail: method.description, method })),
+			{ title: vscode.l10n.t('Sign in to {0}', this.agent.label), placeHolder: vscode.l10n.t('Choose how {0} should authenticate', this.agent.label), ignoreFocusOut: true }
+		))?.method;
+		if (!picked) {
+			return false;
+		}
+
+		const provider = picked._meta?.['api-key']?.provider;
+		if (provider) {
+			const envName = API_KEY_ENV[provider] ?? `${provider.toUpperCase()}_API_KEY`;
+			const key = await vscode.window.showInputBox({
+				title: vscode.l10n.t('{0}: {1}', this.agent.label, picked.name),
+				prompt: vscode.l10n.t('The key is kept in the secure storage of Nova IDE and passed to {0} as {1}.', this.agent.label, envName),
+				password: true,
+				ignoreFocusOut: true
+			});
+			if (!key) {
+				return false;
+			}
+			await this.secrets.store(this.secretKey(envName), key);
+			this.restart(); // the agent reads the key from its environment at startup
+		}
+
+		const connection = await this.getConnection();
+		await vscode.window.withProgress({
+			location: vscode.ProgressLocation.Notification,
+			title: vscode.l10n.t('Signing in to {0}… finish in the browser if it opens.', this.agent.label),
+			cancellable: false
+		}, () => connection.request('authenticate', { methodId: picked.id }));
+		this.log.info(`[${this.agent.label}] authenticated with ${picked.id}`);
+		return true;
+	}
+
+	private restart(): void {
+		void this.connection?.then(c => c.dispose(), () => undefined);
+		this.connection = undefined;
+		this.spareSession = undefined;
+		for (const state of this.sessions.values()) {
+			state.acpSessionId = undefined;
+			state.appliedOptions.clear();
+		}
+	}
+
+	private secretKey(envName: string): string {
+		return `nova.agents.${this.agent.type}.${envName}`;
+	}
+
+	private async readApiKeys(): Promise<Record<string, string>> {
+		const env: Record<string, string> = {};
+		for (const envName of new Set(Object.values(API_KEY_ENV))) {
+			const value = await this.secrets.get(this.secretKey(envName));
+			if (value) {
+				env[envName] = value;
+			}
+		}
+		return env;
 	}
 
 	// --- agent → client requests ---------------------------------------------------------------
@@ -371,6 +486,13 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	}
 }
 
+function isAuthError(error: unknown): boolean {
+	if (!(error instanceof AcpError)) {
+		return false;
+	}
+	return error.code === -32000 || /auth|api key|log ?in|sign ?in|credential|not configured/i.test(error.message);
+}
+
 function toPromptBlocks(request: vscode.ChatRequest): AcpContentBlock[] {
 	const blocks: AcpContentBlock[] = [{ type: 'text', text: request.command ? `/${request.command} ${request.prompt}` : request.prompt }];
 	for (const reference of request.references) {
@@ -387,7 +509,7 @@ function localizedOptionName(id: string, fallback: string): string {
 	switch (id) {
 		case 'model': return vscode.l10n.t('Model');
 		case 'mode': return vscode.l10n.t('Mode');
-		case 'effort': return vscode.l10n.t('Effort');
+		case 'thought_level': return vscode.l10n.t('Effort');
 		default: return fallback;
 	}
 }

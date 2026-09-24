@@ -43,6 +43,54 @@
         "capabilities": {
           "supportsFileAttachments": true
         }
+      },
+      {
+        "type": "nova-claude-code",
+        "name": "claude-code",
+        "displayName": "Claude Code",
+        "description": "%chatSessions.claudeCode.description%",
+        "icon": "$(hubot)",
+        "welcomeTitle": "Claude Code",
+        "welcomeMessage": "%chatSessions.claudeCode.welcomeMessage%",
+        "inputPlaceholder": "%chatSessions.claudeCode.inputPlaceholder%",
+        "order": 6,
+        "canDelegate": true,
+        "supportsAutoModel": true,
+        "capabilities": {
+          "supportsFileAttachments": true
+        }
+      },
+      {
+        "type": "nova-codex",
+        "name": "codex-cli",
+        "displayName": "Codex CLI",
+        "description": "%chatSessions.codex.description%",
+        "icon": "$(terminal)",
+        "welcomeTitle": "Codex CLI",
+        "welcomeMessage": "%chatSessions.codex.welcomeMessage%",
+        "inputPlaceholder": "%chatSessions.codex.inputPlaceholder%",
+        "order": 7,
+        "canDelegate": true,
+        "supportsAutoModel": true,
+        "capabilities": {
+          "supportsFileAttachments": true
+        }
+      },
+      {
+        "type": "nova-gemini",
+        "name": "gemini-cli",
+        "displayName": "Gemini CLI",
+        "description": "%chatSessions.gemini.description%",
+        "icon": "$(star-full)",
+        "welcomeTitle": "Gemini CLI",
+        "welcomeMessage": "%chatSessions.gemini.welcomeMessage%",
+        "inputPlaceholder": "%chatSessions.gemini.inputPlaceholder%",
+        "order": 8,
+        "canDelegate": true,
+        "supportsAutoModel": true,
+        "capabilities": {
+          "supportsFileAttachments": true
+        }
       }
     ],
     "commands": [
@@ -69,6 +117,55 @@
             "acp"
           ],
           "description": "%configuration.opencode.args%"
+        },
+        "nova.agents.claudeCode.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "%configuration.claudeCode.command%"
+        },
+        "nova.agents.claudeCode.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@agentclientprotocol/claude-agent-acp"
+          ],
+          "description": "%configuration.claudeCode.args%"
+        },
+        "nova.agents.codex.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "%configuration.codex.command%"
+        },
+        "nova.agents.codex.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@agentclientprotocol/codex-acp"
+          ],
+          "description": "%configuration.codex.args%"
+        },
+        "nova.agents.gemini.command": {
+          "type": "string",
+          "default": "npx",
+          "description": "%configuration.gemini.command%"
+        },
+        "nova.agents.gemini.args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "-y",
+            "@google/gemini-cli",
+            "--acp"
+          ],
+          "description": "%configuration.gemini.args%"
         }
       }
     }

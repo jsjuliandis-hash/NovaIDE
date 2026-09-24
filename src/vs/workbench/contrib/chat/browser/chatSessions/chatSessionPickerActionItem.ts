@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import './media/chatSessionPickerActionItem.css';
-import { IAction } from '../../../../../base/common/actions.js';
+import { IAction, toAction } from '../../../../../base/common/actions.js';
 import { Event } from '../../../../../base/common/event.js';
 import * as dom from '../../../../../base/browser/dom.js';
 import { getActiveWindow } from '../../../../../base/browser/dom.js';
@@ -28,6 +28,12 @@ import { IActionListItemHover } from '../../../../../platform/actionWidget/brows
 import { getModelHoverContent } from '../widget/input/modelPicker/modelPickerHover.js';
 import { getCompactCodicon } from '../chatIcons.js';
 import { ExtensionIdentifier } from '../../../../../platform/extensions/common/extensions.js';
+import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
+import { ThemeIcon } from '../../../../../base/common/themables.js';
+import { Codicon } from '../../../../../base/common/codicons.js';
+
+/** NOVA: option groups with more items than this get a search box and favorites. */
+const NOVA_SEARCHABLE_OPTION_COUNT = 12;
 
 
 export interface IChatSessionPickerDelegate {
@@ -58,6 +64,7 @@ export class ChatSessionPickerActionItem extends ActionWidgetDropdownActionViewI
 		@ITelemetryService telemetryService: ITelemetryService,
 		@IChatEntitlementService private readonly chatEntitlementService: IChatEntitlementService,
 		@IOpenerService private readonly openerService: IOpenerService,
+		@IStorageService private readonly storageService: IStorageService,
 	) {
 		const { group, item } = initialState;
 		const actionWithLabel: IAction = {
@@ -74,7 +81,17 @@ export class ChatSessionPickerActionItem extends ActionWidgetDropdownActionViewI
 			actionBarActionProvider: undefined,
 			reporter: { id: group.id, name: `ChatSession:${group.name}`, includeOptions: false },
 			getAnchor: () => this._getAnchorElement(),
-			listOptions: withChatInputPickerMotion(undefined),
+			// NOVA: long option lists (e.g. an agent's hundreds of models) get a search box
+			listOptionsProvider: {
+				getListOptions: () => {
+					const currentGroup = this.delegate.getOptionGroup() ?? group;
+					return withChatInputPickerMotion(currentGroup.items.length > NOVA_SEARCHABLE_OPTION_COUNT ? {
+						showFilter: true,
+						focusFilterOnOpen: true,
+						filterPlaceholder: localize('nova.chatSessionPicker.search', "Search {0}", currentGroup.name.toLowerCase()),
+					} : undefined);
+				}
+			},
 		};
 
 		super(actionWithLabel, sessionPickerActionWidgetOptions, actionWidgetService, keybindingService, contextKeyService, telemetryService);
@@ -114,8 +131,16 @@ export class ChatSessionPickerActionItem extends ActionWidgetDropdownActionViewI
 			return [];
 		}
 
-		const actions: IActionWidgetDropdownAction[] = group.items.map(optionItem => {
+		// NOVA: long lists get favorites, pinned to the top in their own section
+		const withFavorites = group.items.length > NOVA_SEARCHABLE_OPTION_COUNT;
+		const favorites = withFavorites ? this._getFavorites(group.id) : [];
+		const items = withFavorites
+			? [...group.items.filter(i => favorites.includes(i.id)), ...group.items.filter(i => !favorites.includes(i.id))]
+			: group.items;
+
+		const actions: IActionWidgetDropdownAction[] = items.map(optionItem => {
 			const isCurrent = optionItem.id === currentOption?.id;
+			const isFavorite = favorites.includes(optionItem.id);
 			return {
 				id: optionItem.id,
 				enabled: !optionItem.locked,
@@ -126,6 +151,19 @@ export class ChatSessionPickerActionItem extends ActionWidgetDropdownActionViewI
 				tooltip: optionItem.description ?? optionItem.name,
 				label: optionItem.name,
 				hover: this._buildOptionHover(optionItem),
+				category: withFavorites && favorites.length
+					? (isFavorite
+						? { label: localize('nova.chatSessionPicker.favorites', "Favorites"), order: 0, showHeader: true }
+						: { label: localize('nova.chatSessionPicker.all', "All"), order: 1, showHeader: true })
+					: undefined,
+				toolbarActions: withFavorites ? [toAction({
+					id: `nova.favorite.${optionItem.id}`,
+					label: isFavorite
+						? localize('nova.chatSessionPicker.removeFavorite', "Remove from Favorites")
+						: localize('nova.chatSessionPicker.addFavorite', "Add to Favorites"),
+					class: ThemeIcon.asClassName(isFavorite ? Codicon.starFull : Codicon.starEmpty),
+					run: () => this._toggleFavorite(group.id, optionItem.id),
+				})] : undefined,
 				run: () => {
 					this.delegate.setOption(optionItem);
 				}
@@ -159,6 +197,25 @@ export class ChatSessionPickerActionItem extends ActionWidgetDropdownActionViewI
 		}
 
 		return actions;
+	}
+
+	// NOVA: favorites are stored per option group id (e.g. "model") in the user profile.
+	private _getFavorites(groupId: string): string[] {
+		try {
+			const value = JSON.parse(this.storageService.get(`nova.chatSessionPicker.favorites.${groupId}`, StorageScope.PROFILE, '[]'));
+			return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+		} catch {
+			return [];
+		}
+	}
+
+	private _toggleFavorite(groupId: string, optionId: string): void {
+		const favorites = this._getFavorites(groupId);
+		const next = favorites.includes(optionId) ? favorites.filter(id => id !== optionId) : [...favorites, optionId];
+		this.storageService.store(`nova.chatSessionPicker.favorites.${groupId}`, JSON.stringify(next), StorageScope.PROFILE, StorageTarget.USER);
+		// Reopen so the list is rebuilt with the new favorites section.
+		this.hide();
+		setTimeout(() => this.show(), 0);
 	}
 
 	private _buildOptionHover(optionItem: IChatSessionProviderOptionItem): IActionListItemHover | undefined {

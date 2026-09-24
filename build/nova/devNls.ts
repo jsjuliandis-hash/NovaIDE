@@ -12,6 +12,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import yauzl from 'yauzl';
 import { analyzeLocalizeCalls, parseLocalizeKeyOrValue } from '../lib/nls-analysis.ts';
+import { novaTranslations } from '../../src/vs/base/common/novaNls.ts';
 
 const PACKS: Record<string, string> = {
 	'pt-br': 'https://open-vsx.org/api/MS-CEINTL/vscode-language-pack-pt-BR/1.131.0/file/MS-CEINTL.vscode-language-pack-pt-BR-1.131.0.vsix',
@@ -121,7 +122,7 @@ async function main(): Promise<void> {
 			continue;
 		}
 		const moduleId = path.relative(srcDir, file).replace(/\\/g, '/').replace(/\.ts$/, '');
-		const moduleTranslations = main.contents[moduleId];
+		const moduleTranslations = { ...novaTranslations[locale]?.[moduleId], ...main.contents[moduleId] };
 		for (const fn of ['localize', 'localize2'] as const) {
 			for (const call of analyzeLocalizeCalls(source, fn)) {
 				calls++;

@@ -266,7 +266,7 @@ configurationRegistry.registerConfiguration({
 		[AgentHostClaudeAgentEnabledSettingId]: {
 			type: 'boolean',
 			description: nls.localize('chat.agentHost.claudeAgent.enabled', "When enabled, the agent host registers the Claude provider, subject to the Claude SDK being reachable. The agent host process must be restarted for changes to take effect."),
-			default: true,
+			default: false, // NOVA: Nova ships its own Claude Code integration (nova-agent-bridge)
 			tags: ['experimental', 'advanced'],
 			// Owns the policy so the account-side preview-features flag can disable Claude across all surfaces.
 			policy: {
@@ -293,7 +293,7 @@ configurationRegistry.registerConfiguration({
 		[AgentHostCodexAgentEnabledSettingId]: {
 			type: 'boolean',
 			description: nls.localize('chat.agentHost.codexAgent.enabled', "When enabled, the agent host registers the Codex provider (subject to the Codex SDK being reachable). Enabling takes effect without restarting the agent host."),
-			default: product.quality !== 'stable',
+			default: false, // NOVA: Nova ships its own Codex CLI integration (nova-agent-bridge)
 			tags: ['experimental'],
 			// Allow the default to be overridden by an experiment. Uses `startup`
 			// to match the sibling agent-host provider settings.

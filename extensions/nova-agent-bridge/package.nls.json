@@ -7,5 +7,20 @@
 	"command.showLog": "Nova Agents: Show Log",
 	"configuration.title": "Nova Agents",
 	"configuration.opencode.command": "Command used to start OpenCode.",
-	"configuration.opencode.args": "Arguments passed to the OpenCode command to start its Agent Client Protocol server."
+	"configuration.opencode.args": "Arguments passed to the OpenCode command to start its Agent Client Protocol server.",
+	"chatSessions.claudeCode.description": "Claude Code running in the background (Agent Client Protocol adapter)",
+	"chatSessions.claudeCode.welcomeMessage": "Chat with Claude Code. It uses your existing Claude Code sign-in.",
+	"chatSessions.claudeCode.inputPlaceholder": "Ask Claude Code to build, fix or explain something",
+	"chatSessions.codex.description": "OpenAI Codex CLI running in the background (Agent Client Protocol adapter)",
+	"chatSessions.codex.welcomeMessage": "Chat with Codex. Sign in with ChatGPT or an OpenAI API key on first use.",
+	"chatSessions.codex.inputPlaceholder": "Ask Codex to build, fix or explain something",
+	"chatSessions.gemini.description": "Google Gemini CLI running in the background (--acp)",
+	"chatSessions.gemini.welcomeMessage": "Chat with Gemini CLI. Sign in with Google or a Gemini API key on first use.",
+	"chatSessions.gemini.inputPlaceholder": "Ask Gemini to build, fix or explain something",
+	"configuration.claudeCode.command": "Command used to start the Claude Code ACP adapter.",
+	"configuration.claudeCode.args": "Arguments for the Claude Code ACP adapter command.",
+	"configuration.codex.command": "Command used to start the Codex ACP adapter.",
+	"configuration.codex.args": "Arguments for the Codex ACP adapter command.",
+	"configuration.gemini.command": "Command used to start Gemini CLI.",
+	"configuration.gemini.args": "Arguments passed to Gemini CLI to start its Agent Client Protocol mode."
 }

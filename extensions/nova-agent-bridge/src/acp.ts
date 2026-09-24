@@ -23,6 +23,10 @@ export interface AcpConfigOption {
 export interface AcpNewSessionResult {
 	readonly sessionId: string;
 	readonly configOptions?: readonly AcpConfigOption[];
+	/** Older ACP session modes (set with `session/set_mode`). */
+	readonly modes?: { readonly currentModeId?: string; readonly availableModes?: readonly { readonly id: string; readonly name: string; readonly description?: string }[] };
+	/** Unstable ACP session models (set with `session/set_model`). */
+	readonly models?: { readonly currentModelId?: string; readonly availableModels?: readonly { readonly modelId: string; readonly name: string; readonly description?: string }[] };
 }
 
 export interface AcpPromptResult {
@@ -66,6 +70,13 @@ export interface AcpRequestHandlers {
 	writeTextFile(params: { sessionId: string; path: string; content: string }): Promise<null>;
 }
 
+export interface AcpAuthMethod {
+	readonly id: string;
+	readonly name: string;
+	readonly description?: string;
+	readonly _meta?: { readonly 'api-key'?: { readonly provider?: string } };
+}
+
 export class AcpError extends Error {
 	constructor(message: string, readonly code: number | undefined, readonly data: unknown) {
 		super(message);
@@ -94,9 +105,9 @@ export class AcpConnection implements vscode.Disposable {
 	private readonly onDidExitEmitter = new vscode.EventEmitter<number | null>();
 	readonly onDidExit = this.onDidExitEmitter.event;
 
-	private constructor(command: string, args: readonly string[], cwd: string | undefined, private readonly handlers: AcpRequestHandlers, private readonly log: vscode.LogOutputChannel) {
+	private constructor(command: string, args: readonly string[], cwd: string | undefined, env: Record<string, string>, private readonly handlers: AcpRequestHandlers, private readonly log: vscode.LogOutputChannel) {
 		// npm-installed agents are .cmd shims on Windows, which need a shell to start.
-		this.process = spawn(command, [...args], { cwd, shell: process.platform === 'win32', stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
+		this.process = spawn(command, [...args], { cwd, shell: process.platform === 'win32', stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
 		this.process.stdout!.setEncoding('utf8');
 		this.process.stdout!.on('data', (chunk: string) => this.onData(chunk));
 		this.process.stderr!.setEncoding('utf8');
@@ -109,16 +120,16 @@ export class AcpConnection implements vscode.Disposable {
 		});
 	}
 
-	static async start(command: string, args: readonly string[], cwd: string | undefined, handlers: AcpRequestHandlers, log: vscode.LogOutputChannel): Promise<{ connection: AcpConnection; agentName: string | undefined }> {
-		const connection = new AcpConnection(command, args, cwd, handlers, log);
+	static async start(command: string, args: readonly string[], cwd: string | undefined, env: Record<string, string>, handlers: AcpRequestHandlers, log: vscode.LogOutputChannel): Promise<{ connection: AcpConnection; agentName: string | undefined; authMethods: readonly AcpAuthMethod[] }> {
+		const connection = new AcpConnection(command, args, cwd, env, handlers, log);
 		try {
-			const result = await connection.request<{ agentInfo?: { name?: string; version?: string } }>('initialize', {
+			const result = await connection.request<{ agentInfo?: { name?: string; version?: string }; authMethods?: AcpAuthMethod[] }>('initialize', {
 				protocolVersion: 1,
 				clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: false },
 				clientInfo: { name: 'nova-ide', title: 'Nova IDE', version: vscode.version }
 			});
 			log.info(`connected to ${result.agentInfo?.name ?? command} ${result.agentInfo?.version ?? ''}`);
-			return { connection, agentName: result.agentInfo?.name };
+			return { connection, agentName: result.agentInfo?.name, authMethods: result.authMethods ?? [] };
 		} catch (error) {
 			connection.dispose();
 			throw error;

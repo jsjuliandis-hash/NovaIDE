@@ -8,6 +8,7 @@ import { promises } from 'fs';
 import { mark } from '../common/performance.js';
 import { ILanguagePack, ILanguagePacks, INLSConfiguration } from '../../nls.js';
 import { Promises } from './pfs.js';
+import { novaTranslations } from '../common/novaNls.js';
 
 export interface IResolveNLSConfigurationContext {
 
@@ -153,8 +154,9 @@ export async function resolveNLSConfiguration({ userLocale, osLocale, userDataPa
 		let nlsIndex = 0;
 		for (const [moduleId, nlsKeys] of nlsDefaultKeys) {
 			const moduleTranslations = nlsPackdata.contents[moduleId];
+			const novaModuleTranslations = novaTranslations[resolvedLanguage]?.[moduleId]; // NOVA: strings Nova added to the core
 			for (const nlsKey of nlsKeys) {
-				nlsResult.push(moduleTranslations?.[nlsKey] || nlsDefaultMessages[nlsIndex]);
+				nlsResult.push(moduleTranslations?.[nlsKey] || novaModuleTranslations?.[nlsKey] || nlsDefaultMessages[nlsIndex]);
 				nlsIndex++;
 			}
 		}
