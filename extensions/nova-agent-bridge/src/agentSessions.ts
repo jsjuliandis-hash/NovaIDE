@@ -317,9 +317,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				if (update.content?.type === 'text' && update.content.text) {
 					// A new agent message (e.g. after a tool call) starts a new paragraph.
 					if (update.messageId && lastMessage.id && update.messageId !== lastMessage.id) {
-						stream.markdown('
-
-');
+						stream.markdown('\n\n');
 					}
 					lastMessage.id = update.messageId ?? lastMessage.id;
 					stream.markdown(update.content.text);
