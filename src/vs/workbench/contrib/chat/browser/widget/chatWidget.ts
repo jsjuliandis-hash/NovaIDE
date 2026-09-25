@@ -1757,6 +1757,16 @@ export class ChatWidget extends Disposable implements IChatWidget {
 			};
 		}
 
+		// NOVA: a Local chat with no model chosen yet tells the user how to get started, instead of the generic welcome.
+		if (this.input.selectedLanguageModel.get() === undefined && (this.viewModel ? getChatSessionType(this.viewModel.model.sessionResource) : localChatSessionType) === localChatSessionType) {
+			return {
+				title: localize('nova.chat.chooseProvider.title', "Choose a Provider to Get Started"),
+				message: new MarkdownString(localize('nova.chat.chooseProvider.message', "Click **Providers**, below the input box, and pick an AI provider: Claude Code, OpenCode, Codex CLI or Gemini CLI. Sign in with your account there and you can start using Nova IDE. In Local chats, pick a model in the input box instead.")),
+				icon: Codicon.chatSparkle,
+				additionalMessage: undefined,
+			};
+		}
+
 		let title: string;
 		if (this.input.currentModeKind === ChatModeKind.Ask) {
 			title = localize('chatDescription', "Ask about your code");
@@ -2664,6 +2674,11 @@ export class ChatWidget extends Disposable implements IChatWidget {
 		this._register(this.chatAgentService.onDidChangeAgents(() => {
 			this.parsedChatRequest = undefined;
 			// Tools agent loads -> welcome content changes
+			this.renderWelcomeViewContentIfNeeded();
+		}));
+		// NOVA: the welcome text depends on whether a model is selected.
+		this._register(autorun(reader => {
+			this.input.selectedLanguageModel.read(reader);
 			this.renderWelcomeViewContentIfNeeded();
 		}));
 		this._register(this.input.onDidChangeCurrentChatMode(() => {

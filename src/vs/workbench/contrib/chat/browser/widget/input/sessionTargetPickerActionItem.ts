@@ -42,6 +42,9 @@ import { ISessionTypePickerDelegate } from '../../chat.js';
 import { IActionProvider } from '../../../../../../base/browser/ui/dropdown/dropdown.js';
 
 
+/** NOVA: set once the user picks a provider in the session type picker, so the label stops saying "Providers". */
+let novaProviderChosen = false;
+
 export interface ISessionTypeItem {
 	type: AgentSessionTarget;
 	label: string;
@@ -230,6 +233,7 @@ export class SessionTypePickerActionItem extends ChatInputPickerActionViewItem {
 	}
 
 	protected _run(sessionTypeItem: ISessionTypeItem): void {
+		novaProviderChosen = true;
 		if (!this._isSessionsWindow) {
 			recordUserSelectedSessionType(this.storageService, this.configurationService, this.chatSessionsService, this.workspaceContextService.getWorkspace(), sessionTypeItem.type, this.agentHostEnablementService.enabled.get());
 		}
@@ -387,8 +391,10 @@ export class SessionTypePickerActionItem extends ChatInputPickerActionViewItem {
 
 	protected override renderLabel(element: HTMLElement): IDisposable | null {
 		const currentType = this._getSelectedSessionType() ?? this._getDefaultSessionType();
-		const label = this._getSessionLabel(currentType);
-		const icon = this._getSessionIcon({ type: currentType, label, hoverDescription: '', commandId: '' });
+		// NOVA: until a provider is chosen, the picker reads "Providers" instead of showing "Local" as if it were one.
+		const showProviders = currentType === AgentSessionProviders.Local && !novaProviderChosen;
+		const label = showProviders ? localize('nova.sessionTarget.providers', "Providers") : this._getSessionLabel(currentType);
+		const icon = showProviders ? Codicon.sparkle : this._getSessionIcon({ type: currentType, label, hoverDescription: '', commandId: '' });
 
 		const labelElements = [];
 		labelElements.push(...renderLabelWithIcons(`$(${getCompactCodicon(icon).id})`));

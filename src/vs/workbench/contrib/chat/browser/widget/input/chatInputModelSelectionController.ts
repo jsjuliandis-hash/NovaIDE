@@ -26,6 +26,7 @@ import { IIntendedModelHolder } from '../../../common/model/chatModel.js';
 import { IIntendedModelSelection, InitialModelSelectionResult, isInConversationModelChoice, isRestoredModelReason, ModelSelectionReason, resolveConfiguredModel, resolveInitialModelSelection, resolveModelIdentifier, RestoredModelReason } from '../../../common/modelSelection.js';
 import { findBestMatchingModel, IsModelSupportedHere, resolveModelFromSyncState, shouldResetModelToDefault, shouldResetOnModelListChange } from './chatInputModelUtils.js';
 import { isByokModel } from '../../../common/chatSelectedModel.js';
+import { SessionType } from '../../../common/chatSessionsService.js';
 import { IChatModelSelectionDiagnostics, NullChatModelSelectionDiagnostics } from './chatModelSelectionDiagnostics.js';
 
 /** What a surface supplies: its catalog, its idea of usable, and what to do with a decision. */
@@ -469,6 +470,10 @@ export class ChatInputModelSelectionController extends Disposable {
 	 * on offer — but never a billable stand-in for a model the conversation is still awaiting.
 	 */
 	private _defaultModel(models: readonly ILanguageModelChatMetadataAndIdentifier[]): ILanguageModelChatMetadataAndIdentifier | undefined {
+		// NOVA: a Local chat never picks a Copilot model on its own; the user chooses one.
+		if (this._runtime.getCurrentSessionType() === SessionType.Local) {
+			return undefined;
+		}
 		return this._runtime.getDeclaredDefaultModel(models)
 			?? models.find(model => !isByokModel(model.metadata))
 			?? (this.isAwaitingRememberedModel() ? undefined : models[0]);
