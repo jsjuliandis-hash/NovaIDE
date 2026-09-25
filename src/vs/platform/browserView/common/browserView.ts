@@ -400,6 +400,8 @@ export interface IBrowserViewKeyDownEvent {
 	altKey: boolean;
 	metaKey: boolean;
 	repeat: boolean;
+	/** NOVA: release of a key whose press was forwarded, so held shortcuts (push-to-talk) know when the key goes up. */
+	keyUp?: boolean;
 }
 
 export interface IBrowserViewTitleChangeEvent {

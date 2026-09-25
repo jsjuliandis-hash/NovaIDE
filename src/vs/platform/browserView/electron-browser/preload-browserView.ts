@@ -56,6 +56,9 @@ function init() {
 		}
 	};
 
+	/** NOVA: codes of the keys whose press was forwarded, waiting for their release. */
+	const forwardedKeys = new Set<string>();
+
 	// Listen for keydown events that the page did not handle and forward them for shortcut handling.
 	window.addEventListener('keydown', (event) => {
 		// Require that the event is trusted -- i.e. user-initiated.
@@ -123,6 +126,7 @@ function init() {
 		// Everything else should be forwarded to the workbench for potential shortcut handling.
 		event.preventDefault();
 		event.stopPropagation();
+		forwardedKeys.add(event.code); // NOVA
 		ipcRenderer.send('vscode:browserView:keydown', {
 			key: event.key,
 			keyCode: event.keyCode,
@@ -132,6 +136,24 @@ function init() {
 			altKey: event.altKey,
 			metaKey: event.metaKey,
 			repeat: event.repeat
+		});
+	});
+
+	// NOVA: also forward the release of a forwarded key, so a held shortcut (Alt+Q push-to-talk) ends when the key goes up.
+	window.addEventListener('keyup', (event) => {
+		if (!(event instanceof KeyboardEvent) || !event.isTrusted || !forwardedKeys.delete(event.code)) {
+			return;
+		}
+		ipcRenderer.send('vscode:browserView:keydown', {
+			key: event.key,
+			keyCode: event.keyCode,
+			code: event.code,
+			ctrlKey: event.ctrlKey,
+			shiftKey: event.shiftKey,
+			altKey: event.altKey,
+			metaKey: event.metaKey,
+			repeat: false,
+			keyUp: true
 		});
 	});
 

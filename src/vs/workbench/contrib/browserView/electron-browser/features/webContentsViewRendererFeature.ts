@@ -4,7 +4,7 @@
  *--------------------------------------------------------------------------------------------*/
 
 import { localize } from '../../../../../nls.js';
-import { $, addDisposableListener, EventType, registerExternalFocusChecker } from '../../../../../base/browser/dom.js';
+import { $, addDisposableListener, EventType, getWindow, registerExternalFocusChecker } from '../../../../../base/browser/dom.js';
 import { getZoomFactor } from '../../../../../base/browser/browser.js';
 import { StandardKeyboardEvent } from '../../../../../base/browser/keyboardEvent.js';
 import { encodeBase64, VSBuffer } from '../../../../../base/common/buffer.js';
@@ -299,6 +299,11 @@ class WebContentsViewRendererFeature extends BrowserEditorContribution {
 			return;
 		}
 		try {
+			// NOVA: a key released inside the page reaches the workbench window as a keyup, which ends held shortcuts (push-to-talk).
+			if (keyEvent.keyUp) {
+				getWindow(this._container).dispatchEvent(new KeyboardEvent('keyup', keyEvent));
+				return;
+			}
 			const syntheticEvent = new KeyboardEvent('keydown', keyEvent);
 			const standardEvent = new StandardKeyboardEvent(syntheticEvent);
 			this.keybindingService.dispatchEvent(standardEvent, this._container);

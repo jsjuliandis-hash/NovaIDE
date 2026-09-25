@@ -70,8 +70,10 @@ suite('Mic button menu actions', () => {
 		assert.deepStrictEqual(actions.map(action => action.label), [
 			'Configure Keybinding',
 			'Microphone Button',
+			'Push to Talk (Hold the Shortcut, Release to Send)', // NOVA
 			'Disable',
 			'',
+			'Configure Dictation (Provider and API Key)', // NOVA
 			'Open Settings',
 			'Configure Instructions',
 			'Show Introduction',

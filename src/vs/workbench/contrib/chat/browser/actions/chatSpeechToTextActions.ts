@@ -5,12 +5,14 @@
 
 import { getActiveWindow, getWindow } from '../../../../../base/browser/dom.js';
 import { ICodeEditor } from '../../../../../editor/browser/editorBrowser.js';
+import { Separator, toAction } from '../../../../../base/common/actions.js'; // NOVA
 import { Codicon } from '../../../../../base/common/codicons.js';
 import { DisposableStore } from '../../../../../base/common/lifecycle.js';
 import { KeyCode, KeyMod } from '../../../../../base/common/keyCodes.js';
-import { EditorContextKeys } from '../../../../../editor/common/editorContextKeys.js';
 import { localize, localize2 } from '../../../../../nls.js';
 import { Action2, MenuId, registerAction2 } from '../../../../../platform/actions/common/actions.js';
+import { ICommandService } from '../../../../../platform/commands/common/commands.js'; // NOVA
+import { IContextMenuService } from '../../../../../platform/contextview/browser/contextView.js'; // NOVA
 import { ContextKeyExpr } from '../../../../../platform/contextkey/common/contextkey.js';
 import { ServicesAccessor } from '../../../../../platform/instantiation/common/instantiation.js';
 import { IConfigurationService } from '../../../../../platform/configuration/common/configuration.js';
@@ -21,7 +23,6 @@ import { INotificationService } from '../../../../../platform/notification/commo
 import { IQuickInputService } from '../../../../../platform/quickinput/common/quickInput.js';
 import { IStorageService, StorageScope, StorageTarget } from '../../../../../platform/storage/common/storage.js';
 import { AgentsVoiceStorageKeys, AGENTS_VOICE_CONNECTED, AGENTS_VOICE_ENABLED } from '../../../agentsVoice/common/agentsVoice.js';
-import { NOTEBOOK_EDITOR_FOCUSED } from '../../../notebook/common/notebookContextKeys.js';
 import { SegmentedVoiceInputModePillInactive } from '../voiceInputMode/voiceInputModeContextKeys.js';
 import { ChatContextKeys } from '../../common/actions/chatContextKeys.js';
 import { CHAT_CATEGORY } from './chatActions.js';
@@ -29,8 +30,9 @@ import { IChatExecuteActionContext } from './chatExecuteActions.js';
 import { IChatWidgetService } from '../chat.js';
 import { ChatSpeechToTextState, DictationSettingId, IChatSpeechToTextService } from '../speechToText/chatSpeechToTextService.js';
 import { buildMicrophoneOptions, IDictationOnboardingService, RESET_DICTATION_ONBOARDING_COMMAND, SHOW_DICTATION_ONBOARDING_COMMAND } from '../speechToText/dictationOnboarding.js';
+import { getDictationContextMenuActions } from '../speechToText/micButtonMenuActions.js'; // NOVA
 import { cancelDictation, isDictating, startDictation, stopDictation } from '../speechToText/dictationSession.js';
-import { CONFIGURE_NOVA_DICTATION_COMMAND_ID, INovaCloudTranscriptionService, NovaDictationSettingId } from '../speechToText/novaCloudTranscription.js'; // NOVA
+import { CONFIGURE_NOVA_DICTATION_COMMAND_ID, NovaDictationSettingId } from '../speechToText/novaCloudTranscription.js'; // NOVA
 
 // Gate on `ChatContextKeys.enabled` so the dictation UI and its commands are
 // hidden (not just disabled) when the user has turned AI features off; without
@@ -187,12 +189,9 @@ export class ToggleChatSpeechToTextAction extends Action2 {
 				weight: KeybindingWeight.WorkbenchContrib + 1,
 				// Dedicated chord scoped to the chat input. Kept distinct from
 				// Voice Mode's Cmd+Shift+Space so the two never contend.
-				when: ContextKeyExpr.and(
-					ChatSpeechToTextConfigured,
-					ChatContextKeys.inChatInput,
-					EditorContextKeys.focus.negate(),
-					NOTEBOOK_EDITOR_FOCUSED.negate(),
-				),
+				// NOVA: global. Alt+Q works wherever the focus is inside the window (editor, explorer, browser, terminal...),
+				// not only in the chat input; the words are dictated into the chat input.
+				when: ChatSpeechToTextConfigured,
 				primary: KeyMod.Alt | KeyCode.KeyQ, // NOVA: was Ctrl+I
 			},
 		});
@@ -202,21 +201,37 @@ export class ToggleChatSpeechToTextAction extends Action2 {
 		const context = args[0] as IChatExecuteActionContext | undefined;
 		const widgetService = accessor.get(IChatWidgetService);
 
-		const widget = context?.widget ?? widgetService.lastFocusedWidget;
+		// NOVA: outside the chat input (Alt+Q from another part of the window) the chat is revealed, without taking the focus, or
+		// created if none is open. The known chat is used right away: hold mode (push-to-talk) only works if dictation starts
+		// in the same tick as the key press, so the reveal is awaited only when there is no chat yet.
+		let widget = context?.widget ?? widgetService.lastFocusedWidget;
+		if (widget?.isTranscriptProgressActive) {
+			return;
+		}
+		// The accessor is only valid until the first await, so the services are taken before the reveal.
+		const configurationService = accessor.get(IConfigurationService);
+		const speechService = accessor.get(IChatSpeechToTextService);
+		const keybindingService = accessor.get(IKeybindingService);
+		const logService = accessor.get(ILogService);
+		const onboardingService = accessor.get(IDictationOnboardingService);
+		if (!context?.widget && !isDictating()) {
+			const revealed = widgetService.revealWidget(true);
+			widget ??= await revealed;
+		}
 		if (!widget || widget.isTranscriptProgressActive) {
 			return;
 		}
 
 		// NOVA: with push-to-talk on, releasing the shortcut sends whatever was dictated.
-		const pushToTalk = accessor.get(IConfigurationService).getValue<boolean>(NovaDictationSettingId.PushToTalk) === true
+		const pushToTalk = configurationService.getValue<boolean>(NovaDictationSettingId.PushToTalk) === true
 			? { submit: async () => { if (widget.getInput().trim()) { await widget.acceptInput(); } } }
 			: undefined;
 
 		await runDictationShortcut({
-			speechService: accessor.get(IChatSpeechToTextService),
-			keybindingService: accessor.get(IKeybindingService),
-			logService: accessor.get(ILogService),
-			onboardingService: accessor.get(IDictationOnboardingService),
+			speechService,
+			keybindingService,
+			logService,
+			onboardingService,
 			pushToTalk,
 		}, ToggleChatSpeechToTextAction.ID, widget.inputEditor);
 	}
@@ -301,8 +316,23 @@ class ConfigureNovaDictationAction extends Action2 {
 		});
 	}
 
+	/** Left click shows the same options as the mic's right click, plus the setup of the voice that reads answers aloud. */
 	async run(accessor: ServicesAccessor): Promise<void> {
-		await accessor.get(INovaCloudTranscriptionService).configure();
+		const commandService = accessor.get(ICommandService);
+		const configurationService = accessor.get(IConfigurationService);
+		const keybindingService = accessor.get(IKeybindingService);
+		const anchor = getActiveWindow().document.activeElement;
+		accessor.get(IContextMenuService).showContextMenu({
+			getAnchor: () => anchor instanceof HTMLElement ? anchor : getActiveWindow().document.body,
+			getActions: () => Separator.join(
+				getDictationContextMenuActions(commandService, configurationService, keybindingService, 'workbench.action.chat.toggleSpeechToText'),
+				[toAction({
+					id: 'nova.tts.configure',
+					label: localize('nova.tts.menu.configureVoice', "Configure Voice (Provider and API Key)"),
+					run: () => commandService.executeCommand('nova.tts.configure')
+				})]
+			)
+		});
 	}
 }
 

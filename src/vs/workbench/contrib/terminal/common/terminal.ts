@@ -573,6 +573,7 @@ export const DEFAULT_COMMANDS_TO_SKIP_SHELL: string[] = [
 	'workbench.action.tasks.terminate',
 	'workbench.action.tasks.test',
 	'workbench.action.toggleFullScreen',
+	'workbench.action.chat.toggleSpeechToText', // NOVA: Alt+Q (dictation) works with the terminal focused too
 	'workbench.action.terminal.focusAtIndex1',
 	'workbench.action.terminal.focusAtIndex2',
 	'workbench.action.terminal.focusAtIndex3',
