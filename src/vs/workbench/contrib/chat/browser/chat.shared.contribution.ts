@@ -434,10 +434,11 @@ configurationRegistry.registerConfiguration({
 		// NOVA: text to speech (Read Aloud and automatic speech). Keys and secrets live in the secret storage, never here.
 		'nova.tts.provider': {
 			type: 'string',
-			enum: ['piper', 'azure', 'google', 'elevenlabs', 'amazon'],
+			enum: ['piper', 'edge', 'azure', 'google', 'elevenlabs', 'amazon'],
 			default: 'piper',
 			enumDescriptions: [
 				nls.localize('nova.tts.provider.piper', "Piper: local, offline and free. Downloads the voice once."),
+				nls.localize('nova.tts.provider.edge', "Edge TTS Neural: Microsoft Edge voices, free, no key. Needs internet; not an official API."),
 				nls.localize('nova.tts.provider.azure', "Microsoft Azure Speech (your own key)."),
 				nls.localize('nova.tts.provider.google', "Google Cloud Text-to-Speech (your own key)."),
 				nls.localize('nova.tts.provider.elevenlabs', "ElevenLabs (your own key)."),
@@ -467,6 +468,11 @@ configurationRegistry.registerConfiguration({
 			enum: ['pt_BR-faber-medium', 'pt_BR-cadu-medium', 'pt_BR-jeff-medium'],
 			default: 'pt_BR-faber-medium',
 			markdownDescription: nls.localize('nova.tts.piper.voice', "Piper voice."),
+		},
+		'nova.tts.edge.voice': {
+			type: 'string',
+			default: 'pt-BR-FranciscaNeural',
+			markdownDescription: nls.localize('nova.tts.edge.voice', "Edge TTS Neural voice name, for example `pt-BR-FranciscaNeural` or `pt-BR-AntonioNeural`."),
 		},
 		'nova.tts.azure.voice': {
 			type: 'string',

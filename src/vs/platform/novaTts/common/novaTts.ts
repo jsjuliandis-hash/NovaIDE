@@ -1,7 +1,7 @@
 /*---------------------------------------------------------------------------------------------
  *  Nova IDE
  *  Text to speech shared by the main process and the workbench: local Piper voice (default) and
- *  optional cloud voices with the user's own key (Azure, Google, ElevenLabs, Amazon Polly).
+ *  Edge TTS Neural (no key) and optional cloud voices with the user's own key (Azure, Google, ElevenLabs, Amazon Polly).
  *-------------------------------------------------------------------------------------------*/
 
 import { Event } from '../../../base/common/event.js';
@@ -9,12 +9,19 @@ import { createDecorator } from '../../instantiation/common/instantiation.js';
 
 export const INovaTtsService = createDecorator<INovaTtsService>('novaTts');
 
-export type NovaTtsProviderId = 'piper' | 'azure' | 'google' | 'elevenlabs' | 'amazon';
+export type NovaTtsProviderId = 'piper' | 'edge' | 'azure' | 'google' | 'elevenlabs' | 'amazon';
 
-export const NOVA_TTS_PROVIDERS: readonly NovaTtsProviderId[] = ['piper', 'azure', 'google', 'elevenlabs', 'amazon'];
+export const NOVA_TTS_PROVIDERS: readonly NovaTtsProviderId[] = ['piper', 'edge', 'azure', 'google', 'elevenlabs', 'amazon'];
 
 /** Piper voices (Brazilian Portuguese) that can be downloaded, best default first. */
 export const NOVA_PIPER_VOICES = ['pt_BR-faber-medium', 'pt_BR-cadu-medium', 'pt_BR-jeff-medium'] as const;
+
+/** Edge TTS Neural voices (Brazilian Portuguese) offered when the service cannot list its voices, best default first. */
+export const NOVA_EDGE_VOICES: readonly { readonly name: string; readonly female: boolean }[] = [
+	{ name: 'pt-BR-FranciscaNeural', female: true },
+	{ name: 'pt-BR-ThalitaMultilingualNeural', female: true },
+	{ name: 'pt-BR-AntonioNeural', female: false },
+];
 
 /**
  * Google Chirp 3 HD voices offered for pt-BR (`pt-BR-Chirp3-HD-<name>`). Google does not publish a popularity
@@ -38,6 +45,7 @@ export function novaGoogleVoiceId(name: string): string {
 
 export const NOVA_TTS_DEFAULT_VOICES: Record<NovaTtsProviderId, string> = {
 	piper: 'pt_BR-faber-medium',
+	edge: 'pt-BR-FranciscaNeural',
 	azure: 'pt-BR-FranciscaNeural',
 	google: 'pt-BR-Chirp3-HD-Aoede',
 	elevenlabs: '21m00Tcm4TlvDq8ikWAM',
@@ -109,6 +117,9 @@ export interface INovaTtsService {
 
 	/** Turns text into audio. Throws an error created by {@link encodeNovaTtsError}. */
 	synthesize(request: INovaTtsRequest): Promise<INovaTtsAudio>;
+
+	/** Voice names of a locale (for example `pt-BR`) offered by Edge TTS. Throws an error created by {@link encodeNovaTtsError} when the service cannot be reached. */
+	listEdgeVoices(locale: string): Promise<readonly { readonly name: string; readonly female: boolean }[]>;
 
 	/** Cheap authenticated request that checks the credentials. Resolves when they work. */
 	verifyCredentials(provider: NovaTtsProviderId, credentials: INovaTtsCredentials): Promise<void>;

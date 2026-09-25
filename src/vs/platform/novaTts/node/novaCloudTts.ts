@@ -56,11 +56,11 @@ function requireKey(credentials: INovaTtsCredentials): string {
 	return key;
 }
 
-function escapeXml(text: string): string {
+export function escapeXml(text: string): string {
 	return text.replace(/[<>&'"]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '\'': '&apos;', '"': '&quot;' })[c]!);
 }
 
-function percentRate(speed: number): string {
+export function percentRate(speed: number): string {
 	const percent = Math.round((speed - 1) * 100);
 	return `${percent >= 0 ? '+' : ''}${percent}%`;
 }

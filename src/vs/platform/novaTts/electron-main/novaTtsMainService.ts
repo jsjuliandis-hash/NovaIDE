@@ -1,8 +1,8 @@
 /*---------------------------------------------------------------------------------------------
  *  Nova IDE
  *  Main-process side of text to speech. The default voice is Piper, a small offline program that
- *  is downloaded on first use into the user data folder (so the installer stays small). Cloud
- *  providers live in ../node/novaCloudTts.ts.
+ *  is downloaded on first use into the user data folder (so the installer stays small). Edge TTS
+ *  (no key) lives in ../node/novaEdgeTts.ts and the cloud providers in ../node/novaCloudTts.ts.
  *-------------------------------------------------------------------------------------------*/
 
 import { spawn } from 'child_process';
@@ -20,6 +20,7 @@ import { ILogService } from '../../log/common/log.js';
 import { createDecorator } from '../../instantiation/common/instantiation.js';
 import { encodeNovaTtsError, INovaTtsAudio, INovaTtsCredentials, INovaTtsInstallProgress, INovaTtsRequest, INovaTtsService, NOVA_PIPER_VOICES, NovaTtsProviderId } from '../common/novaTts.js';
 import { synthesizeInCloud, verifyCloudCredentials } from '../node/novaCloudTts.js';
+import { edgeListVoices, edgeSynthesize } from '../node/novaEdgeTts.js';
 import { wrapPcmAsWav } from '../node/novaWav.js';
 
 export const INovaTtsMainService = createDecorator<INovaTtsMainService>('novaTts');
@@ -192,7 +193,15 @@ export class NovaTtsMainService extends Disposable implements INovaTtsMainServic
 		if (request.provider === 'piper') {
 			return this._synthesizeWithPiper(request);
 		}
+		if (request.provider === 'edge') {
+			return edgeSynthesize(request);
+		}
 		return synthesizeInCloud(request);
+	}
+
+	async listEdgeVoices(locale: string): Promise<readonly { readonly name: string; readonly female: boolean }[]> {
+		const voices = await edgeListVoices(locale);
+		return voices.map(voice => ({ name: voice.shortName, female: voice.gender === 'Female' }));
 	}
 
 	verifyCredentials(provider: NovaTtsProviderId, credentials: INovaTtsCredentials): Promise<void> {

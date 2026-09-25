@@ -1,7 +1,7 @@
 /*---------------------------------------------------------------------------------------------
  *  Nova IDE
  *  Read Aloud and automatic speech for chat answers. The default voice is Piper (local, offline,
- *  downloaded on first use); Azure, Google, ElevenLabs and Amazon Polly work with the user's own key.
+ *  downloaded on first use); Edge TTS Neural needs no key; Azure, Google, ElevenLabs and Amazon Polly work with the user's own key.
  *-------------------------------------------------------------------------------------------*/
 
 import { mainWindow } from '../../../../../base/browser/window.js';
@@ -20,7 +20,7 @@ import { InstantiationType, registerSingleton } from '../../../../../platform/in
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
 import { ILogService } from '../../../../../platform/log/common/log.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
-import { INovaTtsCredentials, INovaTtsService, NOVA_GOOGLE_VOICES, NOVA_PIPER_VOICES, NOVA_TTS_DEFAULT_VOICES, NOVA_TTS_PROVIDERS, NovaTtsProviderId, decodeNovaTtsError, novaGoogleVoiceId } from '../../../../../platform/novaTts/common/novaTts.js';
+import { INovaTtsCredentials, INovaTtsService, NOVA_EDGE_VOICES, NOVA_GOOGLE_VOICES, NOVA_PIPER_VOICES, NOVA_TTS_DEFAULT_VOICES, NOVA_TTS_PROVIDERS, NovaTtsProviderId, decodeNovaTtsError, novaGoogleVoiceId } from '../../../../../platform/novaTts/common/novaTts.js';
 import { IProgressService, ProgressLocation } from '../../../../../platform/progress/common/progress.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../../platform/quickinput/common/quickInput.js';
 import { ISecretStorageService } from '../../../../../platform/secrets/common/secrets.js';
@@ -55,7 +55,7 @@ const AUTO_SPEAK_STORAGE_KEY = 'nova.tts.autoSpeakSessions';
 const MAX_AUTO_SPEAK_ENTRIES = 300;
 
 /** Longest text sent in one request. Piper starts a process per request, so it wants fewer, larger pieces than a cloud API wants. */
-const MAX_PIECE_CHARS: Record<NovaTtsProviderId, number> = { piper: 700, azure: 2500, google: 2000, elevenlabs: 2500, amazon: 2500 };
+const MAX_PIECE_CHARS: Record<NovaTtsProviderId, number> = { piper: 700, edge: 1500, azure: 2500, google: 2000, elevenlabs: 2500, amazon: 2500 };
 
 export const INovaTextToSpeechService = createDecorator<INovaTextToSpeechService>('novaTextToSpeechService');
 
@@ -455,6 +455,20 @@ export class NovaTextToSpeechService extends Disposable implements INovaTextToSp
 	}
 
 	private async _synthesizePiece(provider: NovaTtsProviderId, text: string): Promise<string> {
+		try {
+			return await this._synthesizeWith(provider, text);
+		} catch (err) {
+			// Edge TTS needs the internet and is not an official API: when it fails, use the local voice if it is already downloaded (nothing is downloaded by surprise).
+			const { kind } = decodeNovaTtsError(err);
+			if (provider === 'edge' && kind !== 'other' && await this._tts.isPiperReady(this._voice('piper'))) {
+				this._logService.warn('[nova-tts] Edge TTS failed, using the local voice', decodeNovaTtsError(err).message);
+				return this._synthesizeWith('piper', text);
+			}
+			throw err;
+		}
+	}
+
+	private async _synthesizeWith(provider: NovaTtsProviderId, text: string): Promise<string> {
 		const voice = this._voice(provider);
 		if (provider === 'piper' && !await this._tts.isPiperReady(voice)) {
 			await this._installPiper(voice);
@@ -465,7 +479,7 @@ export class NovaTextToSpeechService extends Disposable implements INovaTextToSp
 			voice,
 			speed: this._configurationService.getValue<number>(NovaTtsSettingId.Speed) || 1,
 			language: this._configurationService.getValue<string>(NovaTtsSettingId.Language) || 'pt-BR',
-			credentials: provider === 'piper' ? undefined : await this._credentials(provider),
+			credentials: provider === 'piper' || provider === 'edge' ? undefined : await this._credentials(provider),
 		});
 		return result.audioBase64;
 	}
@@ -528,6 +542,7 @@ export class NovaTextToSpeechService extends Disposable implements INovaTextToSp
 		const currentLabel = localize('nova.tts.current', "current");
 		const items: IProviderPickItem[] = [
 			{ id: 'piper', label: localize('nova.tts.pickPiper', "Piper (local, offline, free)"), description: current === 'piper' ? currentLabel : localize('nova.tts.recommended', "recommended"), detail: localize('nova.tts.pickPiperDetail', "No key, no account, no limit. Downloads about 100 MB once. Windows only for now.") },
+			{ id: 'edge', label: localize('nova.tts.pickEdge', "Edge TTS Neural (no key)"), description: current === 'edge' ? currentLabel : undefined, detail: localize('nova.tts.pickEdgeDetail', "Natural Microsoft Edge voices, free and without an account. Needs internet. It is not an official API, so it may stop working.") },
 			{ id: 'azure', label: localize('nova.tts.pickAzure', "Microsoft Azure Speech"), description: current === 'azure' ? currentLabel : undefined, detail: localize('nova.tts.pickAzureDetail', "Your own key. Free plan: about 500,000 characters per month.") },
 			{ id: 'google', label: localize('nova.tts.pickGoogle', "Google Cloud Text-to-Speech (Chirp 3 HD)"), description: current === 'google' ? currentLabel : undefined, detail: localize('nova.tts.pickGoogleDetail', "Your own API key from a Google Cloud project. Free plan: about 1 million characters per month.") },
 			{ id: 'elevenlabs', label: localize('nova.tts.pickEleven', "ElevenLabs"), description: current === 'elevenlabs' ? currentLabel : undefined, detail: localize('nova.tts.pickElevenDetail', "Your own key. Very natural voices, but the free plan is small (about 10,000 characters per month).") },
@@ -546,7 +561,37 @@ export class NovaTextToSpeechService extends Disposable implements INovaTextToSp
 		if (provider === 'piper') {
 			return this._setupPiper();
 		}
+		if (provider === 'edge') {
+			return this._setupEdge();
+		}
 		return this._setupCloud(provider);
+	}
+
+	private async _setupEdge(): Promise<boolean> {
+		const language = this._configurationService.getValue<string>(NovaTtsSettingId.Language) || 'pt-BR';
+		let voices: readonly { readonly name: string; readonly female: boolean }[] = NOVA_EDGE_VOICES;
+		try {
+			const listed = await this._tts.listEdgeVoices(language);
+			if (listed.length) {
+				voices = listed;
+			}
+		} catch (err) {
+			this._logService.warn('[nova-tts] Could not list the Edge voices, using the built-in list', decodeNovaTtsError(err).message);
+		}
+		const currentVoice = this._voice('edge');
+		const female = localize('nova.tts.voiceFemale', "female");
+		const male = localize('nova.tts.voiceMale', "male");
+		const voice = await this._quickInputService.pick(voices.map(v => ({ id: v.name, label: v.name.replace(/^[a-z]{2}-[A-Z]{2}-/, '').replace(/Neural$/, ''), description: v.name === currentVoice ? localize('nova.tts.current', "current") : undefined, detail: v.female ? female : male })), {
+			title: localize('nova.tts.edgeVoiceTitle', "Edge TTS Neural Voice"),
+			ignoreFocusLost: true,
+		});
+		if (!voice) {
+			return false;
+		}
+		await this._configurationService.updateValue(novaTtsVoiceSettingId('edge'), voice.id, ConfigurationTarget.USER);
+		await this._configurationService.updateValue(NovaTtsSettingId.Provider, 'edge', ConfigurationTarget.USER);
+		this._notificationService.info(localize('nova.tts.savedEdge', "The voice is now {0}.", providerLabel('edge')));
+		return true;
 	}
 
 	private async _setupPiper(): Promise<boolean> {
@@ -671,6 +716,7 @@ export class NovaTextToSpeechService extends Disposable implements INovaTextToSp
 function providerLabel(provider: NovaTtsProviderId): string {
 	switch (provider) {
 		case 'piper': return localize('nova.tts.labelPiper', "Piper (local)");
+		case 'edge': return localize('nova.tts.labelEdge', "Edge TTS Neural");
 		case 'azure': return localize('nova.tts.labelAzure', "Azure Speech");
 		case 'google': return localize('nova.tts.labelGoogle', "Google Cloud");
 		case 'elevenlabs': return localize('nova.tts.labelEleven', "ElevenLabs");
