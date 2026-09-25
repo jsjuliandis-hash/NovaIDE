@@ -1,27 +1,29 @@
 ---
-name: Bug report
-about: Create a report to help us improve
+name: Relatar um bug
+about: Algo não funciona como deveria na Nova IDE
 title: ''
-labels: ''
+labels: bug
 assignees: ''
 
 ---
 
-<!-- ⚠️⚠️ Do Not Delete This! bug_report_template ⚠️⚠️ -->
-<!-- Please read our Rules of Conduct: https://opensource.microsoft.com/codeofconduct/ -->
-<!-- 🕮 Read our guide about submitting issues: https://github.com/microsoft/vscode/wiki/Submitting-Bugs-and-Suggestions -->
-<!-- 🔎 Search existing issues to avoid creating duplicates. -->
-<!-- 🧪 Test using the latest Insiders build to see if your issue has already been fixed: https://code.visualstudio.com/insiders/ -->
-<!-- 💡 Instead of creating your report here, use 'Report Issue' from the 'Help' menu in VS Code to pre-fill useful information. -->
-<!-- 🔧 Launch with `code --disable-extensions` to check. -->
-Does this issue occur when all extensions are disabled?: Yes/No
+<!-- Falha de segurança? Não relate aqui: veja o SECURITY.md. -->
+<!-- Procure nas issues abertas para evitar duplicatas. -->
 
-<!-- 🪓 If you answered No above, use 'Help: Start Extension Bisect' from Command Palette to try to identify the cause. -->
-<!-- 📣 Issues caused by an extension need to be reported directly to the extension publisher. The 'Help > Report Issue' dialog can assist with this. -->
-- VS Code Version: 
-- OS Version: 
+**Versão da Nova IDE** (menu Ajuda → Sobre):
+**Sistema operacional:**
+**Agente ou provedor envolvido** (se houver: OpenCode, Claude Code, Codex CLI, Gemini CLI, voz, ditado...):
 
-Steps to Reproduce:
+### O que aconteceu
 
-1. 
+### O que você esperava
+
+### Passos para reproduzir
+
+1.
 2.
+3.
+
+### Prints ou logs
+
+<!-- Os logs ficam em %APPDATA%\Nova IDE\logs (Windows). Não cole chaves de API. -->

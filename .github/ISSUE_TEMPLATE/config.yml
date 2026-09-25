@@ -1,8 +1,8 @@
-blank_issues_enabled: false
+blank_issues_enabled: true
 contact_links:
-  - name: Question
-    url: https://stackoverflow.com/questions/tagged/visual-studio-code
-    about: Please ask and answer questions here.
-  - name: Extension Development
-    url: https://github.com/microsoft/vscode-discussions/discussions
-    about: Please use this for extension development questions and ideas.
+  - name: Falha de segurança
+    url: https://github.com/jsjuliandis-hash/NovaIDE/security/advisories/new
+    about: Relate falhas de segurança de forma privada, nunca em issue pública.
+  - name: Problema que também acontece no VS Code
+    url: https://github.com/microsoft/vscode/issues
+    about: Se o problema vem do VS Code original, relate também no repositório da Microsoft.

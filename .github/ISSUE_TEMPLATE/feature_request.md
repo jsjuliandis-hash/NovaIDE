@@ -1,14 +1,16 @@
 ---
-name: Feature request
-about: Suggest an idea for this project
+name: Sugerir uma ideia
+about: Proponha um recurso ou uma melhoria para a Nova IDE
 title: ''
-labels: ''
+labels: enhancement
 assignees: ''
 
 ---
 
-<!-- ⚠️⚠️ Do Not Delete This! feature_request_template ⚠️⚠️ -->
-<!-- Please read our Rules of Conduct: https://opensource.microsoft.com/codeofconduct/ -->
-<!-- Please search existing issues to avoid creating duplicates. -->
+<!-- Procure nas issues abertas para evitar duplicatas. -->
 
-<!-- Describe the feature you'd like. -->
+### Qual problema a ideia resolve
+
+### Como você imagina que funcione
+
+### Alternativas que você já tentou
