@@ -979,7 +979,7 @@ export class ToggleNovaAutoSpeak extends Action2 {
 			id: 'nova.tts.toggleAutoSpeak',
 			title: localize2('nova.tts.toggleAutoSpeak', "Toggle Automatic Speech of Answers in This Chat"),
 			icon: Codicon.unmute,
-			toggled: { condition: NovaAutoSpeakOn, tooltip: localize('nova.tts.autoSpeakTooltipOn', "Automatic speech is on for this chat. Click to turn it off.") },
+			toggled: { condition: NovaAutoSpeakOn, icon: Codicon.broadcast, tooltip: localize('nova.tts.autoSpeakTooltipOn', "Automatic speech is on for this chat. Click to turn it off.") },
 			tooltip: localize('nova.tts.autoSpeakTooltipOff', "Read answers of this chat aloud automatically"),
 			f1: true,
 			category: CHAT_CATEGORY,

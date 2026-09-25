@@ -35,3 +35,22 @@
 	content: var(--vscode-icon-debug-stop-content);
 	font-family: var(--vscode-icon-debug-stop-font-family);
 }
+
+/*
+ * NOVA: automatic speech is on for this chat tab. The icon changes (see ToggleNovaAutoSpeak) and glows
+ * softly, so the user can tell at a glance that answers will be read aloud.
+ */
+.monaco-workbench .interactive-input-part .monaco-action-bar .action-label.codicon-broadcast.checked {
+	color: var(--vscode-textLink-foreground);
+	animation: nova-auto-speak-glow 2.4s ease-in-out infinite;
+}
+
+@keyframes nova-auto-speak-glow {
+	0%, 100% { filter: drop-shadow(0 0 1px var(--vscode-textLink-foreground)); }
+	50% { filter: drop-shadow(0 0 5px var(--vscode-textLink-foreground)); }
+}
+
+.monaco-workbench.monaco-reduce-motion .interactive-input-part .monaco-action-bar .action-label.codicon-broadcast.checked {
+	animation: none;
+	filter: drop-shadow(0 0 3px var(--vscode-textLink-foreground));
+}
