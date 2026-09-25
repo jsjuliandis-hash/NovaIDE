@@ -85,8 +85,8 @@ export interface INovaTextToSpeechService {
 	configure(): Promise<boolean>;
 }
 
-/** Symbols the voice must not read out: asterisks, backticks, slashes, backslashes and emojis (with their joiners, variation selectors and skin tones). */
-const UNSPOKEN_SYMBOLS = /[*`/\\]+|[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}‍️⃣]+/gu;
+/** Symbols the voice must not read out: asterisks, backticks, slashes, backslashes, arrows and emojis (with their joiners, variation selectors and skin tones). */
+const UNSPOKEN_SYMBOLS = /[*`/\\←-⇿⟰-⟿⤀-⥿⬀-⯿]+|[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}‍️⃣]+/gu;
 
 /**
  * Cuts text into pieces of at most `max` characters, at sentence ends when possible, and drops
