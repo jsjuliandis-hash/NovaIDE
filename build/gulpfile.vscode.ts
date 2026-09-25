@@ -518,6 +518,11 @@ function patchWin32DependenciesTask(destinationFolderName: string) {
 			const basename = path.basename(dep);
 			const fullPath = path.join(cwd, dep);
 
+			// NOVA: Nova IDE has no code signing step, so stripping a publisher's valid signature (e.g. GitHub's on the
+			// Copilot runtime.node) would ship the file unsigned, which makes antivirus heuristics flag it. Keep such files as they are.
+			if (await hasAuthenticodeSignature(fullPath)) {
+				return;
+			}
 			await stripAuthenticodeSignature(fullPath);
 			await rcedit(fullPath, {
 				'file-version': baseVersion,
