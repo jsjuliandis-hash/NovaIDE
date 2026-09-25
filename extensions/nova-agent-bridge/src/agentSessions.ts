@@ -10,7 +10,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { vendorIcon } from './vendors';
-import { AcpAuthMethod, AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
+import { AcpAuthMethod, AcpAvailableCommand, AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
 
 /**
  * Static description of an ACP agent. The chat session `type` must match a `chatSessions`
@@ -75,6 +75,9 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	private spareSession: Promise<AcpNewSessionResult> | undefined;
 	private readonly inputStates = new Set<vscode.ChatSessionInputState>();
 	private authMethods: readonly AcpAuthMethod[] = [];
+	/** Slash commands the agent reported (`available_commands_update`); they feed the `/` completion list of the chat. */
+	private commands: readonly AcpAvailableCommand[] = [];
+	private readonly commandsChanged = new vscode.EventEmitter<void>();
 
 	constructor(private readonly agent: AgentDefinition, private readonly secrets: vscode.SecretStorage, private readonly log: vscode.LogOutputChannel) {
 		this.controller = vscode.chat.createChatSessionItemController(agent.type, async () => {
@@ -102,6 +105,38 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		participant.iconPath = new vscode.ThemeIcon(agent.icon);
 		this.disposables.push(participant);
 		this.disposables.push(vscode.chat.registerChatSessionContentProvider(agent.type, this, participant, { supportsInterruptions: true }));
+
+		// NOVA: the chat only lists `/commands` it can find itself (prompt files, skills). The agent knows its own commands
+		// (skills, `~/.claude/commands`, plugins...), so report them as built-in prompts to make them show up in the `/` list.
+		this.disposables.push(this.commandsChanged);
+		this.disposables.push(vscode.chat.registerChatSessionCustomizationProvider(agent.type,
+			{ label: agent.label, iconId: agent.icon, supportedTypes: [vscode.ChatSessionCustomizationType.Prompt] },
+			{
+				onDidChange: this.commandsChanged.event,
+				provideChatSessionCustomizations: () => this.provideSlashCommands()
+			}));
+	}
+
+	private provideSlashCommands(): vscode.ChatSessionCustomizationItem[] {
+		if (!this.connection) {
+			// The agent starts in the background the first time a chat is opened; the list fills in when it reports its commands.
+			void this.ensureConfigOptions().catch(error => this.log.warn(`could not load agent commands: ${error}`));
+		}
+		return this.commands.map(command => ({
+			// `agent-builtin` marks a command without a file: the chat sends the typed `/name` to the agent as plain text.
+			uri: vscode.Uri.from({ scheme: 'agent-builtin', path: `/${command.name}` }),
+			type: vscode.ChatSessionCustomizationType.Prompt,
+			name: command.name,
+			description: [command.description, command.input?.hint].filter(Boolean).join(' — ') || undefined,
+			source: 'builtin',
+			userInvocable: true
+		}));
+	}
+
+	private setCommands(commands: readonly AcpAvailableCommand[]): void {
+		this.commands = commands;
+		this.log.info(`[${this.agent.label}] ${commands.length} slash commands available`);
+		this.commandsChanged.fire();
 	}
 
 	private createSession(resource: vscode.Uri, prompt: string): SessionState {
@@ -142,6 +177,11 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			this.log.info(`[${this.agent.label}] starting ${command} ${args.join(' ')}`);
 			const connection = this.readApiKeys().then(env => AcpConnection.start(command, args, cwd, env, this.createHandlers(), this.log)).then(({ connection, authMethods }) => {
 				this.authMethods = authMethods;
+				connection.onDidUpdate(({ update }) => {
+					if (update.sessionUpdate === 'available_commands_update' && update.availableCommands) {
+						this.setCommands(update.availableCommands);
+					}
+				});
 				connection.onDidExit(() => {
 					// Sessions live inside the process; forget them so the next request starts over.
 					if (this.connection === pending) {

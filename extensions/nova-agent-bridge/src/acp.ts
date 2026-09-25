@@ -43,8 +43,16 @@ export interface AcpToolCallContent {
 	readonly path?: string;
 }
 
+/** A slash command the agent accepts (`available_commands_update`), e.g. a skill or a custom command from `~/.claude/commands`. */
+export interface AcpAvailableCommand {
+	readonly name: string;
+	readonly description?: string;
+	readonly input?: { readonly hint?: string } | null;
+}
+
 export interface AcpSessionUpdate {
 	readonly sessionUpdate: string;
+	readonly availableCommands?: readonly AcpAvailableCommand[];
 	readonly messageId?: string;
 	readonly content?: { readonly type: string; readonly text?: string };
 	readonly toolCallId?: string;

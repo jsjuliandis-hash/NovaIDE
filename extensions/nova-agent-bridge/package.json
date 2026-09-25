@@ -14,7 +14,8 @@
     "Chat"
   ],
   "enabledApiProposals": [
-    "chatSessionsProvider"
+    "chatSessionsProvider",
+    "chatSessionCustomizationProvider"
   ],
   "capabilities": {
     "virtualWorkspaces": false,
@@ -41,7 +42,8 @@
         "canDelegate": true,
         "supportsAutoModel": true,
         "capabilities": {
-          "supportsFileAttachments": true
+          "supportsFileAttachments": true,
+          "supportsPromptAttachments": true
         }
       },
       {
@@ -57,7 +59,8 @@
         "canDelegate": true,
         "supportsAutoModel": true,
         "capabilities": {
-          "supportsFileAttachments": true
+          "supportsFileAttachments": true,
+          "supportsPromptAttachments": true
         }
       },
       {
@@ -73,7 +76,8 @@
         "canDelegate": true,
         "supportsAutoModel": true,
         "capabilities": {
-          "supportsFileAttachments": true
+          "supportsFileAttachments": true,
+          "supportsPromptAttachments": true
         }
       },
       {
@@ -89,7 +93,8 @@
         "canDelegate": true,
         "supportsAutoModel": true,
         "capabilities": {
-          "supportsFileAttachments": true
+          "supportsFileAttachments": true,
+          "supportsPromptAttachments": true
         }
       }
     ],
