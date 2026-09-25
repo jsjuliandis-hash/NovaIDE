@@ -347,7 +347,18 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			} else if (group.id === LEGACY_MODE_ID) {
 				await connection.request('session/set_mode', { sessionId: state.acpSessionId, modeId: value });
 			} else {
-				await connection.request('session/set_config_option', { sessionId: state.acpSessionId, configId: group.id, value });
+				try {
+					await connection.request('session/set_config_option', { sessionId: state.acpSessionId, configId: group.id, value });
+				} catch (error) {
+					// NOVA: switching the model can drop an option (Claude Haiku has no "effort"), but the picker
+					// still holds the old choice. The agent then answers "Unknown config option", which is not a failure.
+					const message = error instanceof Error ? error.message : String(error);
+					const details = (error as { data?: { details?: string } } | undefined)?.data?.details ?? '';
+					if (!/unknown config option/i.test(`${message} ${details}`)) {
+						throw error;
+					}
+					this.log.info(`[${this.agent.label}] the agent has no "${group.id}" option for this model; skipping it`);
+				}
 			}
 			state.appliedOptions.set(group.id, value);
 		}
