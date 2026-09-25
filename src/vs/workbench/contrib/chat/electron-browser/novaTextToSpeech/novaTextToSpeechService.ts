@@ -85,12 +85,12 @@ export interface INovaTextToSpeechService {
 	configure(): Promise<boolean>;
 }
 
-/** Symbols the voice must not read out: asterisks, slashes, backslashes and emojis (with their joiners, variation selectors and skin tones). */
-const UNSPOKEN_SYMBOLS = /[*/\\]+|[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}‍️⃣]+/gu;
+/** Symbols the voice must not read out: asterisks, backticks, slashes, backslashes and emojis (with their joiners, variation selectors and skin tones). */
+const UNSPOKEN_SYMBOLS = /[*`/\\]+|[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}‍️⃣]+/gu;
 
 /**
  * Cuts text into pieces of at most `max` characters, at sentence ends when possible, and drops
- * pieces that have nothing to read (no letter or digit). Links are replaced by the word "link" and asterisks, slashes, backslashes and emojis are never read.
+ * pieces that have nothing to read (no letter or digit). Links are replaced by the word "link" and asterisks, backticks, slashes, backslashes and emojis are never read.
  */
 export function splitForSynthesis(text: string, max: number): string[] {
 	const clean = text.replace(/https?:\/\/\S+/g, 'link').replace(UNSPOKEN_SYMBOLS, ' ').replace(/[ \t]+/g, ' ');

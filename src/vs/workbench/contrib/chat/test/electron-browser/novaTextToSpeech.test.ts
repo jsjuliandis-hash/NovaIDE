@@ -19,6 +19,10 @@ suite('Nova text to speech: splitForSynthesis', () => {
 		assert.deepStrictEqual(splitForSynthesis('Isto é **muito** importante, *sim*. 2*3 é seis.', 100), ['Isto é muito importante, sim . 2 3 é seis.']);
 	});
 
+	test('never reads backticks', () => {
+		assert.deepStrictEqual(splitForSynthesis('Rode `npm test` e depois ```ok```.', 100), ['Rode npm test e depois ok .']);
+	});
+
 	test('never reads slashes, backslashes or emojis', () => {
 		assert.deepStrictEqual(splitForSynthesis('Use e/ou C:\\pasta 🚀 e 👍🏽 pronto ✅.', 100), ['Use e ou C: pasta e pronto .']);
 	});
