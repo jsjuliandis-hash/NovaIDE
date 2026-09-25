@@ -714,7 +714,6 @@ class ChatSynthesizerSessions {
 
 	constructor(
 		@INovaTextToSpeechService private readonly novaTextToSpeechService: INovaTextToSpeechService, // NOVA
-		@IConfigurationService private readonly configurationService: IConfigurationService,
 		@IInstantiationService private readonly instantiationService: IInstantiationService
 	) { }
 
@@ -766,7 +765,7 @@ class ChatSynthesizerSessions {
 
 	private async *nextChatResponseChunk(response: IChatResponseModel, token: CancellationToken): AsyncIterable<string> {
 		const context: IChatSynthesizerContext = {
-			ignoreCodeBlocks: this.configurationService.getValue<boolean>(AccessibilityVoiceSettingId.IgnoreCodeBlocks),
+			ignoreCodeBlocks: true, // NOVA: code blocks are never read aloud
 			insideCodeBlock: false
 		};
 
@@ -821,7 +820,7 @@ class ChatSynthesizerSessions {
 	private filterCodeBlocks(chunk: string, context: IChatSynthesizerContext): string {
 		return chunk.split('\n')
 			.filter(line => {
-				if (line.trimStart().startsWith('```')) {
+				if (/^\s*(```|~~~)/.test(line)) { // NOVA: also ~~~ fences
 					context.insideCodeBlock = !context.insideCodeBlock;
 					return false;
 				}

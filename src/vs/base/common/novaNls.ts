@@ -79,6 +79,7 @@ export const novaTranslations: Readonly<Record<string, Readonly<Record<string, R
 		},
 		'vs/workbench/contrib/chat/browser/actions/chatSpeechToTextActions': {
 			'nova.dictation.configure': 'Configurar Ditado',
+			'nova.tts.menu.configureVoice': 'Configurar Voz (Provedor e Chave de API)',
 		},
 		'vs/workbench/contrib/chat/browser/speechToText/micButtonMenuActions': {
 			'nova.dictation.menu.configure': 'Configurar Ditado (Provedor e Chave de API)',
@@ -114,6 +115,9 @@ export const novaTranslations: Readonly<Record<string, Readonly<Record<string, R
 			'nova.tts.pickTitle': 'Voz: Quem Deve Ler em Voz Alta?',
 			'nova.tts.pickPlaceholder': 'O Piper roda neste computador. As vozes na nuvem enviam o texto ao provedor.',
 			'nova.tts.voiceTitle': 'Voz do Piper',
+			'nova.tts.googleVoiceTitle': 'Voz do Google (Chirp 3 HD)',
+			'nova.tts.voiceFemale': 'feminina',
+			'nova.tts.voiceMale': 'masculina',
 			'nova.tts.savedPiper': 'A voz agora é o Piper (local).',
 			'nova.tts.awsAccessTitle': '{0}: ID da Chave de Acesso da AWS',
 			'nova.tts.keyTitle': '{0}: Chave de API',

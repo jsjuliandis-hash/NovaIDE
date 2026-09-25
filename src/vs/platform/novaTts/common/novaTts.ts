@@ -16,6 +16,26 @@ export const NOVA_TTS_PROVIDERS: readonly NovaTtsProviderId[] = ['piper', 'azure
 /** Piper voices (Brazilian Portuguese) that can be downloaded, best default first. */
 export const NOVA_PIPER_VOICES = ['pt_BR-faber-medium', 'pt_BR-cadu-medium', 'pt_BR-jeff-medium'] as const;
 
+/**
+ * Google Chirp 3 HD voices offered for pt-BR (`pt-BR-Chirp3-HD-<name>`). Google does not publish a popularity
+ * ranking, so these are the voices most used in its own samples and guides, the default first.
+ */
+export const NOVA_GOOGLE_VOICES: readonly { readonly name: string; readonly female: boolean }[] = [
+	{ name: 'Aoede', female: true },
+	{ name: 'Kore', female: true },
+	{ name: 'Leda', female: true },
+	{ name: 'Zephyr', female: true },
+	{ name: 'Achernar', female: true },
+	{ name: 'Puck', female: false },
+	{ name: 'Charon', female: false },
+	{ name: 'Fenrir', female: false },
+	{ name: 'Orus', female: false },
+];
+
+export function novaGoogleVoiceId(name: string): string {
+	return `pt-BR-Chirp3-HD-${name}`;
+}
+
 export const NOVA_TTS_DEFAULT_VOICES: Record<NovaTtsProviderId, string> = {
 	piper: 'pt_BR-faber-medium',
 	azure: 'pt-BR-FranciscaNeural',

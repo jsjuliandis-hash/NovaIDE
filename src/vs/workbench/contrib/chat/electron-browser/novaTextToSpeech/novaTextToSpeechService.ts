@@ -20,7 +20,7 @@ import { InstantiationType, registerSingleton } from '../../../../../platform/in
 import { createDecorator } from '../../../../../platform/instantiation/common/instantiation.js';
 import { ILogService } from '../../../../../platform/log/common/log.js';
 import { INotificationService, Severity } from '../../../../../platform/notification/common/notification.js';
-import { INovaTtsCredentials, INovaTtsService, NOVA_PIPER_VOICES, NOVA_TTS_DEFAULT_VOICES, NOVA_TTS_PROVIDERS, NovaTtsProviderId, decodeNovaTtsError } from '../../../../../platform/novaTts/common/novaTts.js';
+import { INovaTtsCredentials, INovaTtsService, NOVA_GOOGLE_VOICES, NOVA_PIPER_VOICES, NOVA_TTS_DEFAULT_VOICES, NOVA_TTS_PROVIDERS, NovaTtsProviderId, decodeNovaTtsError, novaGoogleVoiceId } from '../../../../../platform/novaTts/common/novaTts.js';
 import { IProgressService, ProgressLocation } from '../../../../../platform/progress/common/progress.js';
 import { IQuickInputService, IQuickPickItem } from '../../../../../platform/quickinput/common/quickInput.js';
 import { ISecretStorageService } from '../../../../../platform/secrets/common/secrets.js';
@@ -85,12 +85,15 @@ export interface INovaTextToSpeechService {
 	configure(): Promise<boolean>;
 }
 
+/** Symbols the voice must not read out: asterisks, slashes, backslashes and emojis (with their joiners, variation selectors and skin tones). */
+const UNSPOKEN_SYMBOLS = /[*/\\]+|[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}‍️⃣]+/gu;
+
 /**
  * Cuts text into pieces of at most `max` characters, at sentence ends when possible, and drops
- * pieces that have nothing to read (no letter or digit). Links are replaced by the word "link".
+ * pieces that have nothing to read (no letter or digit). Links are replaced by the word "link" and asterisks, slashes, backslashes and emojis are never read.
  */
 export function splitForSynthesis(text: string, max: number): string[] {
-	const clean = text.replace(/https?:\/\/\S+/g, 'link').replace(/[ \t]+/g, ' ');
+	const clean = text.replace(/https?:\/\/\S+/g, 'link').replace(UNSPOKEN_SYMBOLS, ' ').replace(/[ \t]+/g, ' ');
 	const sentences = clean.match(/[^.!?\n]+[.!?]*\n*|\n+/g) ?? [clean];
 	const pieces: string[] = [];
 	let current = '';
@@ -628,6 +631,18 @@ export class NovaTextToSpeechService extends Disposable implements INovaTextToSp
 			}
 			if (provider === 'amazon' && region) {
 				await this._configurationService.updateValue(NovaTtsSettingId.AmazonRegion, region, ConfigurationTarget.USER);
+			}
+			if (provider === 'google') {
+				const currentVoice = this._voice('google');
+				const female = localize('nova.tts.voiceFemale', "female");
+				const male = localize('nova.tts.voiceMale', "male");
+				const voice = await this._quickInputService.pick(NOVA_GOOGLE_VOICES.map(v => ({ id: novaGoogleVoiceId(v.name), label: v.name, description: novaGoogleVoiceId(v.name) === currentVoice ? localize('nova.tts.current', "current") : undefined, detail: v.female ? female : male })), {
+					title: localize('nova.tts.googleVoiceTitle', "Google Voice (Chirp 3 HD)"),
+					ignoreFocusLost: true,
+				});
+				if (voice) {
+					await this._configurationService.updateValue(novaTtsVoiceSettingId('google'), voice.id, ConfigurationTarget.USER);
+				}
 			}
 			await this._configurationService.updateValue(NovaTtsSettingId.Provider, provider, ConfigurationTarget.USER);
 			this._notificationService.info(localize('nova.tts.saved', "The voice is now {0}.", label));

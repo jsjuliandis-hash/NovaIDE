@@ -15,6 +15,14 @@ suite('Nova text to speech: splitForSynthesis', () => {
 		assert.deepStrictEqual(splitForSynthesis('Veja https://example.com/a?b=1 agora. Depois volte.', 100), ['Veja link agora. Depois volte.']);
 	});
 
+	test('never reads asterisks', () => {
+		assert.deepStrictEqual(splitForSynthesis('Isto é **muito** importante, *sim*. 2*3 é seis.', 100), ['Isto é muito importante, sim . 2 3 é seis.']);
+	});
+
+	test('never reads slashes, backslashes or emojis', () => {
+		assert.deepStrictEqual(splitForSynthesis('Use e/ou C:\\pasta 🚀 e 👍🏽 pronto ✅.', 100), ['Use e ou C: pasta e pronto .']);
+	});
+
 	test('cuts at sentence ends when the text is longer than the limit', () => {
 		assert.deepStrictEqual(splitForSynthesis('Primeira frase aqui. Segunda frase aqui. Terceira.', 25), ['Primeira frase aqui.', 'Segunda frase aqui.', 'Terceira.']);
 	});
