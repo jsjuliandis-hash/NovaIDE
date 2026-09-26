@@ -10,7 +10,7 @@ import { toAction } from '../../../../../base/common/actions.js';
 import { CancellationToken } from '../../../../../base/common/cancellation.js';
 import { decodeBase64 } from '../../../../../base/common/buffer.js';
 import { Emitter, Event } from '../../../../../base/common/event.js';
-import { Disposable, DisposableStore } from '../../../../../base/common/lifecycle.js';
+import { Disposable, DisposableStore, IDisposable } from '../../../../../base/common/lifecycle.js';
 import { isEqual } from '../../../../../base/common/resources.js';
 import { URI } from '../../../../../base/common/uri.js';
 import { localize } from '../../../../../nls.js';
@@ -57,6 +57,12 @@ const MAX_AUTO_SPEAK_ENTRIES = 300;
 /** Longest text sent in one request. Piper starts a process per request, so it wants fewer, larger pieces than a cloud API wants. */
 const MAX_PIECE_CHARS: Record<NovaTtsProviderId, number> = { piper: 700, edge: 1500, azure: 2500, google: 2000, elevenlabs: 2500, amazon: 2500 };
 
+/** How many pieces are synthesized ahead while the previous one plays, so the next one is ready when the current one ends. */
+const PREFETCH_PIECES = 1;
+
+/** A piece shorter than this that is still waiting in the queue is joined with the next one: a short sentence should not cost a request of its own. */
+const COALESCE_BELOW_CHARS = 300;
+
 export const INovaTextToSpeechService = createDecorator<INovaTextToSpeechService>('novaTextToSpeechService');
 
 export interface INovaTextToSpeechSession extends ITextToSpeechSession {
@@ -88,12 +94,34 @@ export interface INovaTextToSpeechService {
 /** Symbols the voice must not read out: asterisks, backticks, slashes, backslashes, arrows and emojis (with their joiners, variation selectors and skin tones). */
 const UNSPOKEN_SYMBOLS = /[*`/\\←-⇿⟰-⟿⤀-⥿⬀-⯿]+|[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}‍️⃣]+/gu;
 
+/** Extensions that make a word a file name. A short fixed list, so ordinary text such as "fim.Depois" or "3.5" is never touched. */
+const FILE_EXTENSIONS = 'ts|tsx|js|jsx|mjs|cjs|json|jsonc|md|py|css|scss|html|htm|yml|yaml|toml|ini|txt|log|xml|sql|sh|bat|ps1|cs|java|go|rs|c|cpp|h|hpp|php|rb|vue|lock|env|csv|zip|exe|dll|png|jpg|svg|pdf';
+
+/** A file name or path (with its extension) and an optional `:line` or `:line:column` after it. */
+const FILE_NAME = new RegExp(String.raw`(?<![\w.-])([A-Za-z]:(?=[/\\]))?[/\\]?((?:[\w.-]+[/\\])*[\w-]+(?:\.[\w-]+)*)\.(${FILE_EXTENSIONS})\b(?::(\d+)(?::\d+)?)?`, 'g');
+
+/** Breaks `novaTextToSpeechService` into "nova Text To Speech Service" so the voice reads words instead of one long name. */
+function splitCamelCase(name: string): string {
+	return name.replace(/([a-z\d])([A-Z])/g, '$1 $2').replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2').replace(/[_-]+/g, ' ');
+}
+
+/**
+ * Makes file names readable: words of the name apart, "ponto" before the extension, the folders of a path
+ * as plain words, a drive letter as the letter and `:245` as "linha 245". The words are Portuguese, like the default voice language.
+ */
+function speakFileNames(text: string): string {
+	return text.replace(FILE_NAME, (_match, drive: string | undefined, name: string, extension: string, line: string | undefined) => {
+		const words = name.split(/[/\\]/).map(part => part.split('.').map(splitCamelCase).join(' ponto ')).join(' ');
+		return `${drive ? `${drive[0]} ` : ''}${words} ponto ${extension}${line ? `, linha ${line}` : ''}`;
+	});
+}
+
 /**
  * Cuts text into pieces of at most `max` characters, at sentence ends when possible, and drops
- * pieces that have nothing to read (no letter or digit). Links are replaced by the word "link" and asterisks, backticks, slashes, backslashes and emojis are never read.
+ * pieces that have nothing to read (no letter or digit). Links are replaced by the word "link", file names are spelled out (see {@link speakFileNames}) and asterisks, backticks, slashes, backslashes and emojis are never read.
  */
 export function splitForSynthesis(text: string, max: number): string[] {
-	const clean = text.replace(/https?:\/\/\S+/g, 'link').replace(UNSPOKEN_SYMBOLS, ' ').replace(/[ \t]+/g, ' ');
+	const clean = speakFileNames(text.replace(/https?:\/\/\S+/g, 'link')).replace(UNSPOKEN_SYMBOLS, ' ').replace(/[ \t]+/g, ' ');
 	const sentences = clean.match(/[^.!?\n]+[.!?]*\n*|\n+/g) ?? [clean];
 	const pieces: string[] = [];
 	let current = '';
@@ -122,8 +150,17 @@ export function splitForSynthesis(text: string, max: number): string[] {
 
 //#region Player
 
+/** What the session needs from the player: whole audio files are queued and played one after the other. */
+export interface INovaAudioPlayer extends IDisposable {
+	readonly isBusy: boolean;
+	readonly onDidBecomeIdle: Event<void>;
+	/** Queues one audio file. Resolves, once it is decoded and scheduled, with the milliseconds of silence that came before it (0 when it followed the previous audio without a gap). */
+	enqueue(audioBase64: string): Promise<number>;
+	stop(): void;
+}
+
 /** Plays whole audio files (WAV or MP3) one after the other, at the sample rate of each file. */
-class NovaAudioPlayer extends Disposable {
+class NovaAudioPlayer extends Disposable implements INovaAudioPlayer {
 
 	private readonly _onDidBecomeIdle = this._register(new Emitter<void>());
 	readonly onDidBecomeIdle = this._onDidBecomeIdle.event;
@@ -138,7 +175,7 @@ class NovaAudioPlayer extends Disposable {
 		return this._pending > 0;
 	}
 
-	async enqueue(audioBase64: string): Promise<void> {
+	async enqueue(audioBase64: string): Promise<number> {
 		this._context ??= new mainWindow.AudioContext();
 		const context = this._context;
 		if (context.state === 'suspended') {
@@ -157,12 +194,13 @@ class NovaAudioPlayer extends Disposable {
 		}
 		if (this._stopped) {
 			this._pending--;
-			return;
+			return 0;
 		}
 
 		const source = context.createBufferSource();
 		source.buffer = decoded;
 		source.connect(context.destination);
+		const silence = this._nextStart > 0 && this._nextStart < context.currentTime ? Math.round((context.currentTime - this._nextStart) * 1000) : 0;
 		const start = Math.max(context.currentTime + 0.02, this._nextStart);
 		source.start(start);
 		this._nextStart = start + decoded.duration;
@@ -174,6 +212,7 @@ class NovaAudioPlayer extends Disposable {
 				this._onDidBecomeIdle.fire();
 			}
 		};
+		return silence;
 	}
 
 	stop(): void {
@@ -198,40 +237,85 @@ class NovaAudioPlayer extends Disposable {
 
 //#region Session
 
-class NovaTextToSpeechSession extends Disposable implements INovaTextToSpeechSession {
+export class NovaTextToSpeechSession extends Disposable implements INovaTextToSpeechSession {
 
 	private readonly _onDidChange = this._register(new Emitter<ITextToSpeechEvent>());
 	readonly onDidChange = this._onDidChange.event;
 
-	private readonly _player = this._register(new NovaAudioPlayer());
+	private readonly _player: INovaAudioPlayer;
 	private _started = false;
 	private _finished = false;
 	private _ended = false;
-	private _busy = 0;
 	private _floor: Promise<(() => void) | undefined> | undefined;
 	private _releaseFloor: (() => void) | undefined;
+
+	/** Pieces that wait for their turn to be synthesized, in reading order. */
+	private readonly _pieces: string[] = [];
+	private _pumping = false;
+	/** True until the first piece of the answer starts: nothing is joined into it, so the voice starts as soon as possible. */
+	private _firstPending = true;
 
 	constructor(
 		private readonly _token: CancellationToken,
 		private readonly _acquireFloor: (token: CancellationToken) => Promise<(() => void) | undefined>,
 		private readonly _synthesizePiece: (text: string) => Promise<string>,
 		private readonly _maxPieceChars: number,
+		private readonly _prefetch: number,
 		private readonly _onError: (error: unknown) => void,
+		private readonly _trace: (message: string) => void = () => { },
+		player: INovaAudioPlayer = new NovaAudioPlayer(),
 	) {
 		super();
+		this._player = this._register(player);
 		this._register(this._token.onCancellationRequested(() => this._end()));
 		this._register(this._player.onDidBecomeIdle(() => this._endIfDone()));
 	}
 
+	/**
+	 * Adds text to the queue and returns at once, so the chat can keep handing over the answer while the
+	 * voice works. The pieces are synthesized ahead of the one that is playing and played in order.
+	 */
 	async synthesize(text: string): Promise<void> {
-		this._busy++;
-		try {
-			// Shown as "speaking" right away, so the tab offers Stop even while it waits for its turn.
-			if (!this._started) {
-				this._started = true;
-				this._onDidChange.fire({ status: TextToSpeechStatus.Started });
-			}
+		if (this._ended) {
+			return;
+		}
+		// Shown as "speaking" right away, so the tab offers Stop even while it waits for its turn.
+		if (!this._started) {
+			this._started = true;
+			this._onDidChange.fire({ status: TextToSpeechStatus.Started });
+		}
+		this._enqueue(splitForSynthesis(text, this._maxPieceChars));
+		void this._pump();
+	}
 
+	private _enqueue(pieces: string[]): void {
+		for (const piece of pieces) {
+			const last = this._pieces[this._pieces.length - 1];
+			const canJoin = last !== undefined
+				&& last.length < COALESCE_BELOW_CHARS
+				&& last.length + 1 + piece.length <= this._maxPieceChars
+				&& !(this._firstPending && this._pieces.length === 1);
+			if (canJoin) {
+				this._pieces[this._pieces.length - 1] = `${last} ${piece}`;
+			} else {
+				this._pieces.push(piece);
+			}
+		}
+	}
+
+	private _start(piece: string): Promise<{ readonly audio: string; readonly chars: number; readonly synthMs: number }> {
+		const began = Date.now();
+		const result = this._synthesizePiece(piece).then(audio => ({ audio, chars: piece.length, synthMs: Date.now() - began }));
+		result.catch(() => { /* reported when it is awaited, in order */ });
+		return result;
+	}
+
+	private async _pump(): Promise<void> {
+		if (this._pumping) {
+			return;
+		}
+		this._pumping = true;
+		try {
 			// Only one tab speaks at a time. The others wait for their turn instead of talking over it.
 			this._floor ??= this._acquireFloor(this._token).then(release => {
 				this._releaseFloor = release;
@@ -244,15 +328,22 @@ class NovaTextToSpeechSession extends Disposable implements INovaTextToSpeechSes
 				return;
 			}
 
-			for (const piece of splitForSynthesis(text, this._maxPieceChars)) {
+			const ahead: ReturnType<NovaTextToSpeechSession['_start']>[] = [];
+			while (!this._ended) {
+				while (ahead.length <= this._prefetch && this._pieces.length) {
+					this._firstPending = false;
+					ahead.push(this._start(this._pieces.shift()!));
+				}
+				const next = ahead.shift();
+				if (!next) {
+					break;
+				}
+				const { audio, chars, synthMs } = await next;
 				if (this._ended) {
 					return;
 				}
-				const audio = await this._synthesizePiece(piece);
-				if (this._ended) {
-					return;
-				}
-				await this._player.enqueue(audio);
+				const gapMs = await this._player.enqueue(audio);
+				this._trace(`piece of ${chars} characters: synthesized in ${synthMs} ms, ${gapMs} ms of silence before it, ${ahead.length} more in progress, ${this._pieces.length} waiting`);
 			}
 		} catch (err) {
 			if (!this._ended) {
@@ -261,7 +352,8 @@ class NovaTextToSpeechSession extends Disposable implements INovaTextToSpeechSes
 				this._end();
 			}
 		} finally {
-			this._busy--;
+			this._pumping = false;
+			this._endIfDone();
 		}
 	}
 
@@ -271,7 +363,7 @@ class NovaTextToSpeechSession extends Disposable implements INovaTextToSpeechSes
 	}
 
 	private _endIfDone(): void {
-		if (this._finished && !this._busy && !this._player.isBusy) {
+		if (this._finished && !this._pumping && !this._pieces.length && !this._player.isBusy) {
 			this._end();
 		}
 	}
@@ -281,6 +373,7 @@ class NovaTextToSpeechSession extends Disposable implements INovaTextToSpeechSes
 			return;
 		}
 		this._ended = true;
+		this._pieces.length = 0;
 		this._releaseFloor?.();
 		this._player.stop();
 		this._onDidChange.fire({ status: TextToSpeechStatus.Stopped });
@@ -438,7 +531,9 @@ export class NovaTextToSpeechService extends Disposable implements INovaTextToSp
 			floorToken => this._acquireFloor(floorToken),
 			text => this._synthesizePiece(provider, text),
 			MAX_PIECE_CHARS[provider],
+			provider === 'piper' ? 0 : PREFETCH_PIECES, // Piper runs a process per piece and answers fast: no need to work ahead
 			error => this._reportError(error),
+			message => this._logService.debug('[nova-tts]', message),
 		);
 		disposables.add(session.onDidChange(e => {
 			if (e.status === TextToSpeechStatus.Stopped) {
