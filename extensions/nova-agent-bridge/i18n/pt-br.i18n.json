@@ -39,6 +39,7 @@
 			"_The agent refused to continue._": "_O agente se recusou a continuar._",
 			"_The agent stopped: limit reached ({0})._": "_O agente parou: limite atingido ({0})._",
 			"Tool failed: {0}": "Falha na ferramenta: {0}",
+				"A tool call failed.": "Uma chamada de ferramenta falhou.",
 			"Plan: {0} of {1} steps left": "Plano: faltam {0} de {1} etapas",
 			"{0} is not signed in. Run `{1}` in a terminal and try again.": "O {0} não está conectado a uma conta. Rode `{1}` em um terminal e tente de novo.",
 			"Could not start `{0}`. Install it or set `{1}.command` in the settings.": "Não foi possível iniciar o `{0}`. Instale-o ou defina `{1}.command` nas configurações.",

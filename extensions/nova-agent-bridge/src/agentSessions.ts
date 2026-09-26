@@ -63,6 +63,9 @@ const TOOL_ICONS: Record<string, string> = {
 	fetch: '$(globe)',
 };
 
+/** Tool kinds whose title is a file path, safe to show in the chat; every other kind may carry raw command output. */
+const FILE_TOOL_KINDS = new Set(['read', 'edit', 'delete', 'move', 'search']);
+
 export class AgentSessionProvider implements vscode.ChatSessionContentProvider, vscode.Disposable {
 
 	private readonly disposables: vscode.Disposable[] = [];
@@ -428,13 +431,15 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				const title = target ? `${update.title && update.title !== kind ? update.title : kind ?? ''} ${vscode.workspace.asRelativePath(target)}`.trim() : (update.title ?? known?.title ?? '');
 				toolCalls.set(id, { title, kind });
 				if (update.status === 'in_progress' && target) {
-					stream.progress(`${TOOL_ICONS[kind ?? ''] ?? '$(tools)'} ${title}`);
+					// NOVA: only file tools show their path; the title of any other tool (shell command, fetch) is a raw command or log, so show "Thinking…".
+						stream.progress(FILE_TOOL_KINDS.has(kind ?? '') ? `${TOOL_ICONS[kind ?? '']} ${title}` : vscode.l10n.t('Thinking…'));
 				} else if (update.status === 'completed' && (kind === 'edit' || kind === 'delete' || kind === 'move')) {
 					for (const location of update.locations ?? []) {
 						editedFiles.add(location.path);
 					}
 				} else if (update.status === 'failed') {
-					stream.markdown('\n\n> ' + vscode.l10n.t('Tool failed: {0}', title) + '\n\n');
+					// NOVA: a failed shell command would dump the whole command line into the chat.
+						stream.markdown('\n\n> ' + (FILE_TOOL_KINDS.has(kind ?? '') ? vscode.l10n.t('Tool failed: {0}', title) : vscode.l10n.t('A tool call failed.')) + '\n\n');
 				}
 				break;
 			}
