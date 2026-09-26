@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { Gateway, GatewayId, GATEWAYS } from './gateways';
 import { vendorIcon } from './vendors';
 import { AcpAuthMethod, AcpAvailableCommand, AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
 
@@ -27,6 +28,8 @@ export interface AgentDefinition {
 	readonly icon: string;
 	/** Logo shown for models whose company cannot be told from their id or name. */
 	readonly defaultVendor?: string;
+	/** Set for the model gateways (NVIDIA, OpenRouter): OpenCode limited to that gateway, with its own API key. */
+	readonly gateway?: GatewayId;
 }
 
 interface SessionState {
@@ -97,10 +100,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			const state = this.controller.createChatSessionInputState(this.buildGroups(context.previousInputState));
 			this.inputStates.add(state);
 			state.onDidDispose(() => this.inputStates.delete(state));
-			if (!this.configOptions) {
-				// Start the agent and discover models in the background; pickers fill in when ready.
-				void this.ensureConfigOptions().catch(error => this.log.warn(`could not load agent options: ${error}`));
-			}
+			// NOVA: this runs for every provider when the IDE opens, so it must not start the agent (see provideChatSessionContent).
 			return state;
 		};
 
@@ -121,10 +121,8 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	}
 
 	private provideSlashCommands(): vscode.ChatSessionCustomizationItem[] {
-		if (!this.connection) {
-			// The agent starts in the background the first time a chat is opened; the list fills in when it reports its commands.
-			void this.ensureConfigOptions().catch(error => this.log.warn(`could not load agent commands: ${error}`));
-		}
+		// NOVA: this is asked for every provider when the IDE opens. Starting the agent here would launch all of them at once,
+		// so the list stays empty until the user opens a chat of this provider, which starts the agent and fills it in.
 		return this.commands.map(command => ({
 			// `agent-builtin` marks a command without a file: the chat sends the typed `/name` to the agent as plain text.
 			uri: vscode.Uri.from({ scheme: 'agent-builtin', path: `/${command.name}` }),
@@ -159,6 +157,9 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	}
 
 	provideChatSessionContent(resource: vscode.Uri, _token: vscode.CancellationToken, context: { readonly inputState: vscode.ChatSessionInputState }): vscode.ChatSession {
+		// NOVA: a session of this provider is being opened, the first sign that the user wants it. Start the agent and discover
+		// its models in the background (pickers fill in when ready) instead of launching every agent when the IDE opens.
+		void this.warmUp();
 		const options: Record<string, vscode.ChatSessionProviderOptionItem> = {};
 		for (const group of context?.inputState.groups ?? []) {
 			if (group.selected) {
@@ -178,7 +179,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			const args = config.get<string[]>('args') ?? [...this.agent.defaultArgs];
 			const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 			this.log.info(`[${this.agent.label}] starting ${command} ${args.join(' ')}`);
-			const connection = this.readApiKeys().then(env => AcpConnection.start(command, args, cwd, env, this.createHandlers(), this.log)).then(({ connection, authMethods }) => {
+			const connection = this.readAgentEnv().then(env => AcpConnection.start(command, args, cwd, env, this.createHandlers(), this.log)).then(({ connection, authMethods }) => {
 				this.authMethods = authMethods;
 				connection.onDidUpdate(({ update }) => {
 					if (update.sessionUpdate === 'available_commands_update' && update.availableCommands) {
@@ -228,6 +229,19 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			this.setConfigOptions(options);
 		}
 		return result;
+	}
+
+	private async warmUp(): Promise<void> {
+		if (this.configOptions) {
+			return;
+		}
+		try {
+			if (await this.ensureGatewayKey()) {
+				await this.ensureConfigOptions();
+			}
+		} catch (error) {
+			this.log.warn(`could not load agent options: ${error}`);
+		}
 	}
 
 	private async ensureConfigOptions(): Promise<void> {
@@ -296,9 +310,16 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		state.item.timing = { created: state.item.timing?.created ?? Date.now(), lastRequestStarted: Date.now() };
 		this.controller.items.add(state.item);
 
+		const startedAt = Date.now();
 		let connection: AcpConnection;
 		try {
-			stream.progress(vscode.l10n.t('Connecting to {0}…', this.agent.label));
+			if (!await this.ensureGatewayKey()) {
+				throw new Error(vscode.l10n.t('{0} needs an API key. Run "Nova Agents: Set API Key" to add it.', this.agent.label));
+			}
+			// NOVA: the agent process and its session outlive the request, so later messages have nothing to connect to.
+			if (!this.connection || !state.acpSessionId) {
+				stream.progress(vscode.l10n.t('Connecting to {0}…', this.agent.label));
+			}
 			connection = await this.getConnection();
 			if (!state.acpSessionId) {
 				state.acpSessionId = (await this.takeSpareSession()).sessionId;
@@ -310,6 +331,8 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		}
 
 		const acpSessionId = state.acpSessionId!;
+		this.log.info(`[${this.agent.label}] request: connection and session ready after ${Date.now() - startedAt} ms (session ${acpSessionId}, first prompt: ${!state.manualSent})`);
+		let firstUpdateAt: number | undefined;
 		const toolCalls = new Map<string, { title: string; kind?: string }>();
 		const editedFiles = new Set<string>();
 		let thinking = false;
@@ -318,6 +341,14 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		const listener = connection.onDidUpdate(({ sessionId, update }) => {
 			if (sessionId !== acpSessionId) {
 				return;
+			}
+			firstUpdateAt ??= Date.now();
+			if (update.sessionUpdate === 'usage_update') {
+				this.log.info(`[${this.agent.label}] usage: context ${update.used ?? '?'} of ${update.size ?? '?'} tokens${update.cost ? `, cost ${update.cost.amount} ${update.cost.currency}` : ''}`);
+				if (update.used !== undefined && update.size) {
+					// NOVA: feeds the context usage donut of the chat input (used tokens out of the model's context window).
+					stream.usage({ promptTokens: update.used, completionTokens: 0, contextWindow: update.size });
+				}
 			}
 			this.renderUpdate(update, stream, toolCalls, editedFiles, lastMessage, () => {
 				if (!thinking) {
@@ -337,6 +368,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			}
 			state.manualSent = true;
 			const result = await this.withAuthentication(() => connection.request<AcpPromptResult>('session/prompt', { sessionId: acpSessionId, prompt }));
+			this.log.info(`[${this.agent.label}] response: first update after ${firstUpdateAt ? firstUpdateAt - startedAt : '?'} ms, finished after ${Date.now() - startedAt} ms, stopReason ${result.stopReason}, prompt ${JSON.stringify(prompt).length} characters, result ${JSON.stringify(result)}`);
 			for (const file of editedFiles) {
 				stream.reference(vscode.Uri.file(file));
 			}
@@ -543,9 +575,63 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		return `nova.agents.${this.agent.type}.${envName}`;
 	}
 
+	get label(): string {
+		return this.agent.label;
+	}
+
+	private get gateway(): Gateway | undefined {
+		return this.agent.gateway && GATEWAYS[this.agent.gateway];
+	}
+
+	/** The environment the agent process starts with: stored API keys and, for a gateway, the OpenCode setup for it. */
+	private async readAgentEnv(): Promise<Record<string, string>> {
+		const env = await this.readApiKeys();
+		const gateway = this.gateway;
+		if (gateway) {
+			if (!env[gateway.envName]) {
+				throw new Error(vscode.l10n.t('{0} needs an API key.', gateway.label));
+			}
+			env.OPENCODE_CONFIG_CONTENT = JSON.stringify(await gateway.buildConfig());
+		}
+		return env;
+	}
+
+	/** True when this provider has what it needs to start; a gateway without a stored key asks for it first. */
+	async ensureGatewayKey(): Promise<boolean> {
+		const gateway = this.gateway;
+		if (!gateway || await this.secrets.get(this.secretKey(gateway.envName))) {
+			return true;
+		}
+		return this.askGatewayKey();
+	}
+
+	/** Asks for the API key of this gateway, stores it and restarts the agent so it picks the key up. */
+	async askGatewayKey(): Promise<boolean> {
+		const gateway = this.gateway;
+		if (!gateway) {
+			return false;
+		}
+		const key = await vscode.window.showInputBox({
+			title: vscode.l10n.t('{0} API Key', gateway.label),
+			prompt: vscode.l10n.t('Paste your {0} API key. It is kept in the secure storage of Nova IDE. Create one at {1}', gateway.label, gateway.keyUrl),
+			password: true,
+			ignoreFocusOut: true
+		});
+		if (!key) {
+			return false;
+		}
+		await this.secrets.store(this.secretKey(gateway.envName), key.trim());
+		this.restart();
+		return true;
+	}
+
 	private async readApiKeys(): Promise<Record<string, string>> {
 		const env: Record<string, string> = {};
-		for (const envName of new Set(Object.values(API_KEY_ENV))) {
+		const envNames = new Set(Object.values(API_KEY_ENV));
+		if (this.gateway) {
+			envNames.add(this.gateway.envName);
+		}
+		for (const envName of envNames) {
 			const value = await this.secrets.get(this.secretKey(envName));
 			if (value) {
 				env[envName] = value;

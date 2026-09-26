@@ -26,7 +26,15 @@
 			"configuration.codex.args": "Argumentos do comando do adaptador ACP do Codex.",
 			"configuration.gemini.command": "Comando usado para iniciar o Gemini CLI.",
 			"configuration.gemini.args": "Argumentos passados ao Gemini CLI para iniciar o modo Agent Client Protocol.",
-			"configuration.injectIdeManual": "Envia o manual da Nova IDE (como abrir arquivos e imagens, usar o navegador integrado etc.) a cada agente no início de cada sessão, para ele saber usar a IDE."
+			"configuration.injectIdeManual": "Envia o manual da Nova IDE (como abrir arquivos e imagens, usar o navegador integrado etc.) a cada agente no início de cada sessão, para ele saber usar a IDE.",
+			"chatSessions.nvidia.description": "Modelos da NVIDIA (incluindo os gratuitos do build.nvidia.com) pelo OpenCode",
+			"chatSessions.nvidia.welcomeMessage": "Converse com modelos hospedados pela NVIDIA. Muitos são gratuitos com uma chave de API do build.nvidia.com, pedida no primeiro uso.",
+			"chatSessions.nvidia.inputPlaceholder": "Peça a um modelo da NVIDIA para criar, corrigir ou explicar algo",
+			"chatSessions.openrouter.description": "Modelos do OpenRouter (incluindo os gratuitos) pelo OpenCode",
+			"chatSessions.openrouter.welcomeMessage": "Converse com qualquer modelo do OpenRouter. Os gratuitos aparecem por padrão; a chave de API é pedida no primeiro uso.",
+			"chatSessions.openrouter.inputPlaceholder": "Peça a um modelo do OpenRouter para criar, corrigir ou explicar algo",
+			"command.setApiKey": "Nova Agents: Definir Chave de API",
+			"configuration.openrouter.freeModelsOnly": "Listar só os modelos gratuitos do OpenRouter (ids terminados em :free ou com preço zero), em vez de todos. Modelos pagos usam o crédito da sua conta OpenRouter. Reinicie o chat do OpenRouter depois de mudar."
 		},
 		"bundle": {
 			"The agent process exited (code {0}).": "O processo do agente foi encerrado (código {0}).",
@@ -39,7 +47,7 @@
 			"_The agent refused to continue._": "_O agente se recusou a continuar._",
 			"_The agent stopped: limit reached ({0})._": "_O agente parou: limite atingido ({0})._",
 			"Tool failed: {0}": "Falha na ferramenta: {0}",
-				"A tool call failed.": "Uma chamada de ferramenta falhou.",
+			"A tool call failed.": "Uma chamada de ferramenta falhou.",
 			"Plan: {0} of {1} steps left": "Plano: faltam {0} de {1} etapas",
 			"{0} is not signed in. Run `{1}` in a terminal and try again.": "O {0} não está conectado a uma conta. Rode `{1}` em um terminal e tente de novo.",
 			"Could not start `{0}`. Install it or set `{1}.command` in the settings.": "Não foi possível iniciar o `{0}`. Instale-o ou defina `{1}.command` nas configurações.",
@@ -51,7 +59,14 @@
 			"Choose how {0} should authenticate": "Escolha como o {0} deve se autenticar",
 			"{0}: {1}": "{0}: {1}",
 			"The key is kept in the secure storage of Nova IDE and passed to {0} as {1}.": "A chave fica no armazenamento seguro da Nova IDE e é passada ao {0} como {1}.",
-			"Signing in to {0}… finish in the browser if it opens.": "Entrando no {0}… conclua no navegador se ele abrir."
+			"Signing in to {0}… finish in the browser if it opens.": "Entrando no {0}… conclua no navegador se ele abrir.",
+			"Process exited with code {0}": "Processo encerrado com código {0}",
+			"{0} needs an API key. Run \"Nova Agents: Set API Key\" to add it.": "{0} precisa de uma chave de API. Execute \"Nova Agents: Definir Chave de API\" para adicioná-la.",
+			"{0} needs an API key.": "{0} precisa de uma chave de API.",
+			"{0} API Key": "Chave de API do {0}",
+			"Paste your {0} API key. It is kept in the secure storage of Nova IDE. Create one at {1}": "Cole a sua chave de API do {0}. Ela fica no armazenamento seguro da Nova IDE. Crie uma em {1}",
+			"Set API Key": "Definir Chave de API",
+			"Choose the provider": "Escolha o provedor"
 		}
 	}
 }

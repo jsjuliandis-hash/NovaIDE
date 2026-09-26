@@ -12,7 +12,7 @@ export const novaTranslations: Readonly<Record<string, Readonly<Record<string, R
 	'pt-br': {
 		'vs/workbench/contrib/chat/browser/widget/chatWidget': {
 			'nova.chat.chooseProvider.title': 'Escolha um Provedor para Começar',
-			'nova.chat.chooseProvider.message': 'Clique em **Provedores**, abaixo da caixa de texto, e escolha um provedor de IA: Claude Code, OpenCode, Codex CLI ou Gemini CLI. Entre com a sua conta nele e pronto: você já pode usar a Nova IDE. Em chats Locais, escolha um modelo na caixa de texto.',
+			'nova.chat.chooseProvider.message': 'Clique em **Provedores**, abaixo da caixa de texto, e escolha um provedor de IA: Claude Code, OpenCode, Codex CLI, Gemini CLI, NVIDIA ou OpenRouter (os dois últimos têm modelos gratuitos). Entre com a sua conta ou chave de API e pronto: você já pode usar a Nova IDE. Em chats Locais, escolha um modelo na caixa de texto.',
 		},
 		'vs/workbench/contrib/chat/browser/widget/input/sessionTargetPickerActionItem': {
 			'nova.sessionTarget.providers': 'Provedores',

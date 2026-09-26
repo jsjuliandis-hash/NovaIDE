@@ -1761,7 +1761,7 @@ export class ChatWidget extends Disposable implements IChatWidget {
 		if (this.input.selectedLanguageModel.get() === undefined && (this.viewModel ? getChatSessionType(this.viewModel.model.sessionResource) : localChatSessionType) === localChatSessionType) {
 			return {
 				title: localize('nova.chat.chooseProvider.title', "Choose a Provider to Get Started"),
-				message: new MarkdownString(localize('nova.chat.chooseProvider.message', "Click **Providers**, below the input box, and pick an AI provider: Claude Code, OpenCode, Codex CLI or Gemini CLI. Sign in with your account there and you can start using Nova IDE. In Local chats, pick a model in the input box instead.")),
+				message: new MarkdownString(localize('nova.chat.chooseProvider.message', "Click **Providers**, below the input box, and pick an AI provider: Claude Code, OpenCode, Codex CLI, Gemini CLI, NVIDIA or OpenRouter (the last two have free models). Sign in with your account or API key and you can start using Nova IDE. In Local chats, pick a model in the input box instead.")),
 				icon: Codicon.chatSparkle,
 				additionalMessage: undefined,
 			};

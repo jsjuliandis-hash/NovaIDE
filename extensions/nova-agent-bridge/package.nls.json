@@ -23,5 +23,13 @@
 	"configuration.codex.args": "Arguments for the Codex ACP adapter command.",
 	"configuration.gemini.command": "Command used to start Gemini CLI.",
 	"configuration.gemini.args": "Arguments passed to Gemini CLI to start its Agent Client Protocol mode.",
-	"configuration.injectIdeManual": "Send the Nova IDE manual (how to open files and images, use the integrated browser, and so on) to every agent at the start of each session, so it knows how to use the IDE."
+	"configuration.injectIdeManual": "Send the Nova IDE manual (how to open files and images, use the integrated browser, and so on) to every agent at the start of each session, so it knows how to use the IDE.",
+	"chatSessions.nvidia.description": "NVIDIA models (including free ones from build.nvidia.com) through OpenCode",
+	"chatSessions.nvidia.welcomeMessage": "Chat with models hosted by NVIDIA. Many are free with a build.nvidia.com API key, which is asked on first use.",
+	"chatSessions.nvidia.inputPlaceholder": "Ask a NVIDIA model to build, fix or explain something",
+	"chatSessions.openrouter.description": "OpenRouter models (including free ones) through OpenCode",
+	"chatSessions.openrouter.welcomeMessage": "Chat with any model on OpenRouter. Free models are listed by default; the API key is asked on first use.",
+	"chatSessions.openrouter.inputPlaceholder": "Ask an OpenRouter model to build, fix or explain something",
+	"command.setApiKey": "Nova Agents: Set API Key",
+	"configuration.openrouter.freeModelsOnly": "List only the free models of OpenRouter (ids ending in :free, or with zero price), instead of every model. Paid models use the credit of your OpenRouter account. Restart the OpenRouter chat after changing it."
 }

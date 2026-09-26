@@ -15,7 +15,8 @@
   ],
   "enabledApiProposals": [
     "chatSessionsProvider",
-    "chatSessionCustomizationProvider"
+    "chatSessionCustomizationProvider",
+    "chatParticipantAdditions"
   ],
   "capabilities": {
     "virtualWorkspaces": false,
@@ -96,12 +97,51 @@
           "supportsFileAttachments": true,
           "supportsPromptAttachments": true
         }
+      },
+      {
+        "type": "nova-nvidia",
+        "name": "nvidia",
+        "displayName": "NVIDIA",
+        "description": "%chatSessions.nvidia.description%",
+        "icon": "$(nova-logo-nvidia)",
+        "welcomeTitle": "NVIDIA",
+        "welcomeMessage": "%chatSessions.nvidia.welcomeMessage%",
+        "inputPlaceholder": "%chatSessions.nvidia.inputPlaceholder%",
+        "order": 9,
+        "canDelegate": true,
+        "supportsAutoModel": true,
+        "capabilities": {
+          "supportsFileAttachments": true,
+          "supportsPromptAttachments": true
+        }
+      },
+      {
+        "type": "nova-openrouter",
+        "name": "openrouter",
+        "displayName": "OpenRouter",
+        "description": "%chatSessions.openrouter.description%",
+        "icon": "$(nova-logo-openrouter)",
+        "welcomeTitle": "OpenRouter",
+        "welcomeMessage": "%chatSessions.openrouter.welcomeMessage%",
+        "inputPlaceholder": "%chatSessions.openrouter.inputPlaceholder%",
+        "order": 10,
+        "canDelegate": true,
+        "supportsAutoModel": true,
+        "capabilities": {
+          "supportsFileAttachments": true,
+          "supportsPromptAttachments": true
+        }
       }
     ],
     "commands": [
       {
         "command": "novaAgentBridge.showLog",
         "title": "%command.showLog%",
+        "category": "Nova"
+      },
+      {
+        "command": "novaAgentBridge.setApiKey",
+        "title": "%command.setApiKey%",
         "category": "Nova"
       }
     ],
@@ -176,6 +216,11 @@
             "--acp"
           ],
           "description": "%configuration.gemini.args%"
+        },
+        "nova.agents.openrouter.freeModelsOnly": {
+          "type": "boolean",
+          "default": false,
+          "description": "%configuration.openrouter.freeModelsOnly%"
         }
       }
     },

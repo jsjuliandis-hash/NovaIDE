@@ -47,15 +47,49 @@ const AGENTS: readonly AgentDefinition[] = [
 		loginHint: 'gemini',
 		icon: 'nova-logo-gemini-cli',
 		defaultVendor: 'google'
+	},
+	{
+		type: 'nova-nvidia',
+		label: 'NVIDIA',
+		settingsSection: 'nova.agents.nvidia',
+		defaultCommand: 'opencode',
+		defaultArgs: ['acp'],
+		loginHint: '',
+		icon: 'nova-logo-nvidia',
+		defaultVendor: 'nvidia',
+		gateway: 'nvidia'
+	},
+	{
+		type: 'nova-openrouter',
+		label: 'OpenRouter',
+		settingsSection: 'nova.agents.openrouter',
+		defaultCommand: 'opencode',
+		defaultArgs: ['acp'],
+		loginHint: '',
+		icon: 'nova-logo-openrouter',
+		defaultVendor: 'openrouter',
+		gateway: 'openrouter'
 	}
 ];
 
 export function activate(context: vscode.ExtensionContext): void {
 	const log = vscode.window.createOutputChannel('Nova Agents', { log: true });
 	context.subscriptions.push(log);
+	const gatewayProviders: AgentSessionProvider[] = [];
 	for (const agent of AGENTS) {
-		context.subscriptions.push(new AgentSessionProvider(agent, context.secrets, log));
+		const provider = new AgentSessionProvider(agent, context.secrets, log);
+		context.subscriptions.push(provider);
+		if (agent.gateway) {
+			gatewayProviders.push(provider);
+		}
 	}
+	context.subscriptions.push(vscode.commands.registerCommand('novaAgentBridge.setApiKey', async () => {
+		const picked = await vscode.window.showQuickPick(
+			gatewayProviders.map(provider => ({ label: provider.label, provider })),
+			{ title: vscode.l10n.t('Set API Key'), placeHolder: vscode.l10n.t('Choose the provider'), ignoreFocusOut: true }
+		);
+		await picked?.provider.askGatewayKey();
+	}));
 	context.subscriptions.push(vscode.commands.registerCommand('novaAgentBridge.showLog', () => log.show()));
 }
 

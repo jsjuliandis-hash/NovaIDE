@@ -200,7 +200,8 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate, ICha
 		// NOVA: chat tabs, restored together with the last session
 		this.chatTabs = this._register(this.instantiationService.createInstance(ChatViewTabs, {
 			loadSession: resource => this.loadSession(resource),
-			newSession: () => this.clear(),
+			// NOVA: a new tab starts blank (Local, no provider or model chosen), not with the provider used last.
+			newSession: () => this.startNewLocalSession(),
 		}, !!(this.viewState.sessionResource || this.viewState.sessionId)));
 		this.sessionsViewerVisible = false; // will be updated from layout code
 		this.sessionsViewerSidebarWidth = Math.max(ChatViewPane.SESSIONS_SIDEBAR_MIN_WIDTH, this.viewState.sessionsSidebarWidth ?? ChatViewPane.SESSIONS_SIDEBAR_DEFAULT_WIDTH);
