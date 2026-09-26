@@ -15,7 +15,7 @@
 			"config.port": "Porta TCP preferida para o servidor local da Nova Browser Bridge (MCP + REST). Se estiver ocupada, uma porta livre é escolhida automaticamente.",
 			"config.cdpPort": "Porta TCP preferida para o endpoint do Chrome DevTools Protocol (para chromium.connectOverCDP ou @playwright/mcp --cdp-endpoint). Se estiver ocupada, uma porta livre é escolhida automaticamente. Conectar exige o token da ponte e a mesma confirmação de nova.browserBridge.allowEvaluate.",
 			"config.allowedHosts": "Hosts para os quais `open`/`navigate` são permitidos por padrão. Uma URL cujo host não esteja nesta lista é recusada, a menos que `#nova.browserBridge.allowExternalHosts#` esteja habilitado.",
-			"config.allowExternalHosts": "Permite que agentes abram/naveguem para qualquer host, não só os listados em nova.browserBridge.allowedHosts. Habilite com cautela.",
+			"config.allowExternalHosts": "Permite que agentes abram/naveguem para qualquer host, não só os listados em nova.browserBridge.allowedHosts. Vem habilitado por padrão; desligue para restringir os agentes aos hosts de allowedHosts.",
 			"config.allowEvaluate": "Permite que agentes executem código Playwright arbitrário (run_playwright / comando 'run' da CLI) contra páginas do navegador integrado. Na primeira tentativa, o usuário é solicitado a confirmar.",
 			"config.devServer.autoStart": "Se a Nova IDE deve subir automaticamente o servidor de desenvolvimento detectado do projeto ao abrir a pasta. 'ask' pergunta uma vez e lembra a resposta para este workspace."
 		},

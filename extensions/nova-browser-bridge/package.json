@@ -92,7 +92,7 @@
         },
         "nova.browserBridge.allowExternalHosts": {
           "type": "boolean",
-          "default": false,
+          "default": true,
           "description": "%config.allowExternalHosts%"
         },
         "nova.browserBridge.allowEvaluate": {

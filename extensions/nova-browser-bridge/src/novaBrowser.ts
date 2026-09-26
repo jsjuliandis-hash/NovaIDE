@@ -420,7 +420,7 @@ export class NovaBrowser implements vscode.Disposable {
  */
 function assertHostAllowed(url: string): void {
 	const config = vscode.workspace.getConfiguration('nova.browserBridge');
-	if (config.get<boolean>('allowExternalHosts', false)) {
+	if (config.get<boolean>('allowExternalHosts', true)) {
 		return;
 	}
 	const allowed = config.get<string[]>('allowedHosts', ['localhost', '127.0.0.1', '[::1]', '0.0.0.0', '[::]']);
