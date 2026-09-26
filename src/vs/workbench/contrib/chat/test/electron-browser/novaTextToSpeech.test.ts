@@ -52,6 +52,9 @@ suite('Nova text to speech: splitForSynthesis', () => {
 	});
 
 	test('cuts a sentence that is longer than the limit and drops pieces with nothing to read', () => {
+		assert.deepStrictEqual(splitForSynthesis('um guarda-chuva e nome_da_variavel.', 200), ['um guarda chuva e nome da variavel.']);
+		assert.deepStrictEqual(splitForSynthesis('Vale -5 e a->b, mas x - y e --flag.', 200), ['Vale -5 e a->b, mas x menos y e flag.']);
+		assert.deepStrictEqual(splitForSynthesis('x-y e x - y.', 200), ['x y e x menos y.']);
 		assert.deepStrictEqual(splitForSynthesis('abcdefghij\n---\n***', 4), ['abcd', 'efgh', 'ij']);
 	});
 });

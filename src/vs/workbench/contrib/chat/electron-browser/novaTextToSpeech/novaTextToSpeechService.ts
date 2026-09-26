@@ -91,8 +91,14 @@ export interface INovaTextToSpeechService {
 	configure(): Promise<boolean>;
 }
 
-/** Symbols the voice must not read out: asterisks, backticks, slashes, backslashes, arrows and emojis (with their joiners, variation selectors and skin tones). */
-const UNSPOKEN_SYMBOLS = /[*`/\\←-⇿⟰-⟿⤀-⥿⬀-⯿]+|[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}‍️⃣]+/gu;
+/** Symbols the voice must not read out: asterisks, backticks, slashes, backslashes, underscores, arrows and emojis (with their joiners, variation selectors and skin tones). */
+const UNSPOKEN_SYMBOLS = /[*`/\\_←-⇿⟰-⟿⤀-⥿⬀-⯿]+|[\p{Extended_Pictographic}\u{1F3FB}-\u{1F3FF}‍️⃣]+/gu;
+
+/** A hyphen with a space on each side, as in "x - y", is a minus sign: it is spoken as the word "menos" (Portuguese, like the default voice language). */
+const SPACED_HYPHEN = /(?<=[ \t])-(?=[ \t])/g;
+
+/** Any other hyphen is read only when the next character is a digit or another symbol ("-5", "->", "-("); a hyphen before a letter or a space, as in "guarda-chuva", is not read. A run of hyphens counts as one, so only its last one can be read. */
+const UNSPOKEN_HYPHEN = /-(?!(?!-)[\p{N}\p{P}\p{S}])/gu;
 
 /** Extensions that make a word a file name. A short fixed list, so ordinary text such as "fim.Depois" or "3.5" is never touched. */
 const FILE_EXTENSIONS = 'ts|tsx|js|jsx|mjs|cjs|json|jsonc|md|py|css|scss|html|htm|yml|yaml|toml|ini|txt|log|xml|sql|sh|bat|ps1|cs|java|go|rs|c|cpp|h|hpp|php|rb|vue|lock|env|csv|zip|exe|dll|png|jpg|svg|pdf';
@@ -118,10 +124,10 @@ function speakFileNames(text: string): string {
 
 /**
  * Cuts text into pieces of at most `max` characters, at sentence ends when possible, and drops
- * pieces that have nothing to read (no letter or digit). Links are replaced by the word "link", file names are spelled out (see {@link speakFileNames}) and asterisks, backticks, slashes, backslashes and emojis are never read.
+ * pieces that have nothing to read (no letter or digit). Links are replaced by the word "link", file names are spelled out (see {@link speakFileNames}) and asterisks, backticks, slashes, backslashes, underscores and emojis are never read (they become spaces), and neither are hyphens unless a digit or another symbol follows them.
  */
 export function splitForSynthesis(text: string, max: number): string[] {
-	const clean = speakFileNames(text.replace(/https?:\/\/\S+/g, 'link')).replace(UNSPOKEN_SYMBOLS, ' ').replace(/[ \t]+/g, ' ');
+	const clean = speakFileNames(text.replace(/https?:\/\/\S+/g, 'link')).replace(UNSPOKEN_SYMBOLS, ' ').replace(SPACED_HYPHEN, 'menos').replace(UNSPOKEN_HYPHEN, ' ').replace(/[ \t]+/g, ' ');
 	const sentences = clean.match(/[^.!?\n]+[.!?]*\n*|\n+/g) ?? [clean];
 	const pieces: string[] = [];
 	let current = '';
