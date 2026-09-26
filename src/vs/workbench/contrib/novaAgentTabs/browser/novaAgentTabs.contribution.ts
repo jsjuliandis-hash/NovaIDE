@@ -37,7 +37,7 @@ CommandsRegistry.registerCommand('nova.agentTabs.markTerminal', async (accessor,
 		return;
 	}
 
-	instance.statusList.add({ id: STATUS_ID, severity: Severity.Info, icon: Codicon.circleFilled, tooltip: localize('nova.agentTabs.terminal', "Opened by an agent") });
+	instance.statusList.add({ id: STATUS_ID, severity: Severity.Warning, icon: Codicon.zap, tooltip: localize('nova.agentTabs.terminal', "Opened by an agent") });
 	const store = new DisposableStore();
 	const clear = () => {
 		instance.statusList.remove(STATUS_ID);

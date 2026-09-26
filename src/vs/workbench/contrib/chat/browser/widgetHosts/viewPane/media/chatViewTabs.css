@@ -93,11 +93,10 @@
 .nova-chat-tab-dot {
 	display: none;
 	flex: 0 0 auto;
-	width: 6px;
-	height: 6px;
+	width: 7px;
+	height: 12px;
 	margin: 0 5px;
-	border-radius: 50%;
-	background-color: var(--vscode-activityBarBadge-background, var(--vscode-focusBorder));
+	background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='290 140 432 750'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%23F0C43C'/><stop offset='1' stop-color='%23B58900'/></linearGradient></defs><path d='M548 150 L300 585 L478 585 L398 880 L712 420 L530 420 L650 150Z' fill='url(%23g)'/></svg>") center / contain no-repeat;
 }
 
 .nova-chat-tab.unseen:not(:hover) .nova-chat-tab-dot {
