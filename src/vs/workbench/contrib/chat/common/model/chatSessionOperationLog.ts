@@ -165,6 +165,7 @@ const requestSchema = Adapt.object<IChatRequestModel, ISerializableChatRequestDa
 	completionTokens: Adapt.v(m => m.response?.completionTokenCount),
 	promptTokens: Adapt.v(m => m.response?.usage?.promptTokens),
 	outputBuffer: Adapt.v(m => m.response?.usage?.outputBuffer),
+	contextWindow: Adapt.v(m => m.response?.usage?.contextWindow),
 	promptTokenDetails: Adapt.v(m => m.response?.usage?.promptTokenDetails, objectsEqual),
 	copilotCredits: Adapt.v(m => m.response?.usage?.copilotCredits),
 	modelTotals: Adapt.v(m => m.response?.usage?.modelTotals, objectsEqual),

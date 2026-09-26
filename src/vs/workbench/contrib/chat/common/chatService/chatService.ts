@@ -185,6 +185,8 @@ export interface IChatUsage {
 	promptTokens: number;
 	completionTokens: number;
 	outputBuffer?: number;
+	/** NOVA: context window of the model that served the request, when the model is not one the IDE knows (agents). */
+	contextWindow?: number;
 	promptTokenDetails?: readonly IChatUsagePromptTokenDetail[];
 	/**
 	 * The Copilot credit cost of whatever this usage describes — a turn's own

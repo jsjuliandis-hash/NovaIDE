@@ -875,6 +875,13 @@ declare module 'vscode' {
 		readonly outputBuffer?: number;
 
 		/**
+		 * The size of the context window, in tokens, of the model that served this request. NOVA: agents that
+		 * are not language models known to the IDE (Agent Client Protocol) report it here, so the context
+		 * usage indicator has a denominator.
+		 */
+		readonly contextWindow?: number;
+
+		/**
 		 * The number of copilot credits consumed by this request.
 		 */
 		readonly copilotCredits?: number;

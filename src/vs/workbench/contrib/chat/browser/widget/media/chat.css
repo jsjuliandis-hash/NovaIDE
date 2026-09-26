@@ -1358,6 +1358,17 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	}
 }
 
+/* NOVA: the context usage donut floats over the top-right corner of the input box. */
+.interactive-session .chat-input-container > .chat-context-usage-container.nova-floating {
+	position: absolute;
+	top: 6px;
+	right: 8px;
+	z-index: 2;
+	margin: 0;
+	display: flex;
+	align-items: center;
+}
+
 /* Context usage widget container - positioned in the secondary toolbar below input */
 .interactive-session .chat-input-toolbars .chat-context-usage-container,
 .interactive-session .chat-secondary-toolbar .chat-context-usage-container {

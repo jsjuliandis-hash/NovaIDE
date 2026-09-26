@@ -411,6 +411,9 @@ const emptyInputAttachments = observableMemento<readonly IChatRequestVariableEnt
 	fromStorage: deserializeUntitledInputAttachments,
 });
 
+/** NOVA: width kept free at the end of the input editor while the context usage donut is shown over it. */
+const NOVA_CONTEXT_USAGE_TRAILING_SPACE = 34;
+
 export class ChatInputPart extends Disposable implements IHistoryNavigationWidget {
 	private static _counter = 0;
 
@@ -3372,6 +3375,15 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		);
 		this.contextUsageWidgetContainer.appendChild(this.contextUsageWidget.domNode);
 
+		// NOVA: the context usage donut floats over the top-right corner of the input box, not in the toolbar below it.
+		this.contextUsageWidgetHome = this.inputContainer;
+		this.inputContainer.append(this.contextUsageWidgetContainer);
+		this.contextUsageWidgetContainer.classList.add('nova-floating');
+		this._register(this.contextUsageWidget.onDidChangeVisibility(() => {
+			// Keep typed text from running under the donut.
+			this.setInputEditorTrailingSpace(this.contextUsageWidget?.isVisible.get() ? NOVA_CONTEXT_USAGE_TRAILING_SPACE : 0);
+		}));
+
 		if (this.options.enableImplicitContext && !this._implicitContext) {
 			this._implicitContext = this._register(
 				this.instantiationService.createInstance(ChatImplicitContexts),
@@ -5243,7 +5255,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 			const inputToolbarWidth = this.cachedInputToolbarWidth = this.inputActionsToolbar.getItemsWidth();
 			const executeToolbarPadding = (this.executeToolbar.getItemsLength() - 1) * toolbarItemGap;
 			const inputToolbarPadding = this.inputActionsToolbar.getItemsLength() ? (this.inputActionsToolbar.getItemsLength() - 1) * toolbarItemGap : 0;
-			const contextUsageWidth = dom.getTotalWidth(this.contextUsageWidgetContainer);
+			const contextUsageWidth = 0; // NOVA: the widget floats over the input box, it takes no room in the toolbar.
 			const inputToolbarsPadding = 12; // pdading between input toolbar/execute toolbar/contextUsage.
 			return executeToolbarWidth + executeToolbarPadding + contextUsageWidth + (this.options.renderInputToolbarBelowInput ? 0 : inputToolbarWidth + inputToolbarPadding + inputToolbarsPadding);
 		};

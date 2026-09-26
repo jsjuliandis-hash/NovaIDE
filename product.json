@@ -108,7 +108,8 @@
 	"extensionEnabledApiProposals": {
 		"nova-ide.nova-agent-bridge": [
 			"chatSessionsProvider",
-			"chatSessionCustomizationProvider"
+			"chatSessionCustomizationProvider",
+			"chatParticipantAdditions"
 		],
 		"nova-ide.nova-browser-bridge": [
 			"browser"

@@ -1734,7 +1734,8 @@ export class ChatResponseModel extends Disposable implements IChatResponseModel 
 		const isNewCall = !currentUsage
 			|| currentUsage.promptTokens !== usage.promptTokens
 			|| currentUsage.completionTokens !== usage.completionTokens
-			|| currentUsage.outputBuffer !== usage.outputBuffer;
+			|| currentUsage.outputBuffer !== usage.outputBuffer
+			|| currentUsage.contextWindow !== usage.contextWindow;
 
 		this._usageObs.set(usage, undefined);
 		// `completionTokens` describes a single model call, so the running count is
@@ -1760,6 +1761,7 @@ export class ChatResponseModel extends Disposable implements IChatResponseModel 
 		return currentUsage.promptTokens === usage.promptTokens
 			&& currentUsage.completionTokens === usage.completionTokens
 			&& currentUsage.outputBuffer === usage.outputBuffer
+			&& currentUsage.contextWindow === usage.contextWindow
 			&& currentUsage.copilotCredits === usage.copilotCredits
 			&& currentUsage.sessionCopilotCredits === usage.sessionCopilotCredits
 			&& equals(currentUsage.promptTokenDetails, usage.promptTokenDetails)
@@ -1898,6 +1900,7 @@ export class ChatResponseModel extends Disposable implements IChatResponseModel 
 			promptTokens: this.usage?.promptTokens,
 			completionTokens: this.completionTokenCount,
 			outputBuffer: this.usage?.outputBuffer,
+			contextWindow: this.usage?.contextWindow,
 			promptTokenDetails: this.usage?.promptTokenDetails,
 			copilotCredits: this.usage?.copilotCredits,
 			modelTotals: this.usage?.modelTotals,
@@ -2004,6 +2007,7 @@ interface ISerializableChatResponseData {
 	promptTokens?: number;
 	completionTokens?: number;
 	outputBuffer?: number;
+	contextWindow?: number;
 	promptTokenDetails?: readonly IChatUsagePromptTokenDetail[];
 	copilotCredits?: number;
 	modelTotals?: readonly IChatUsageModelTotal[];
@@ -3134,6 +3138,7 @@ export class ChatModel extends Disposable implements IChatModel {
 					promptTokens: raw.promptTokens ?? 0,
 					completionTokens: raw.completionTokens ?? 0,
 					outputBuffer: raw.outputBuffer,
+					contextWindow: raw.contextWindow,
 					promptTokenDetails: raw.promptTokenDetails,
 					copilotCredits: raw.copilotCredits,
 					modelTotals: raw.modelTotals,

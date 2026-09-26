@@ -307,7 +307,8 @@ export class ChatContextUsageWidget extends Disposable {
 			return;
 		}
 
-		if (!lastRequest.response || !lastRequest.modelId) {
+		// NOVA: an agent (Agent Client Protocol) has no language model id; it reports its own context window with the usage.
+		if (!lastRequest.response) {
 			// Pending request keep old data visible if available
 			if (!this._currentData.get()) {
 				this.hide();
@@ -316,7 +317,7 @@ export class ChatContextUsageWidget extends Disposable {
 		}
 
 		const response = lastRequest.response;
-		const modelId = lastRequest.modelId;
+		const modelId = lastRequest.modelId ?? '';
 		this._currentResponse = response;
 		this._currentModelId = modelId;
 
@@ -407,7 +408,10 @@ export class ChatContextUsageWidget extends Disposable {
 		// The denominator (context window) follows the currently selected model so switching models updates the widget
 		// immediately; the numerator (usage) still comes from the last response. A meta-model such as "auto" has no
 		// context window of its own, so fall back to the model that actually served the request (see issue #321781).
-		const contextWindow = this.resolveContextWindow(this._selectedModelId) ?? this.resolveContextWindow(effectiveModelId);
+		// NOVA: the window an agent reports with its usage is authoritative; it is not a model the IDE knows.
+		const contextWindow = usage?.contextWindow && usage.contextWindow > 0
+			? { maxOutputTokens: undefined, totalContextWindow: usage.contextWindow }
+			: this.resolveContextWindow(this._selectedModelId) ?? this.resolveContextWindow(effectiveModelId);
 		if (!usage || !contextWindow) {
 			if (!this._currentData.get()) {
 				this.hide();
@@ -454,9 +458,10 @@ export class ChatContextUsageWidget extends Disposable {
 
 		// Color based on actual usage percentage
 		this.domNode.classList.remove('warning', 'error');
-		if (data.percentage >= 90) {
+		// NOVA: yellow above 50%, red above 75% (upstream: 75% and 90%).
+		if (data.percentage > 75) {
 			this.domNode.classList.add('error');
-		} else if (data.percentage >= 75) {
+		} else if (data.percentage > 50) {
 			this.domNode.classList.add('warning');
 		}
 	}

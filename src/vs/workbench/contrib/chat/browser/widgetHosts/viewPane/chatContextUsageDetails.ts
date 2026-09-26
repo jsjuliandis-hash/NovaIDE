@@ -199,9 +199,10 @@ export class ChatContextUsageDetails extends Disposable {
 
 		// Color classes based on actual usage percentage
 		this.quotaItem.classList.remove('warning', 'error');
-		if (percentage >= 90) {
+		// NOVA: same thresholds as the donut: yellow above 50%, red above 75%.
+		if (percentage > 75) {
 			this.quotaItem.classList.add('error');
-		} else if (percentage >= 75) {
+		} else if (percentage > 50) {
 			this.quotaItem.classList.add('warning');
 		}
 
