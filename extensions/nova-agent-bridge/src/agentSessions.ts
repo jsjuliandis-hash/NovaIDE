@@ -75,6 +75,8 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	private spareSession: Promise<AcpNewSessionResult> | undefined;
 	private readonly inputStates = new Set<vscode.ChatSessionInputState>();
 	private authMethods: readonly AcpAuthMethod[] = [];
+	/** Whether the agent accepts images in a prompt (ACP promptCapabilities.image). */
+	private imagePrompts = false;
 	/** Slash commands the agent reported (`available_commands_update`); they feed the `/` completion list of the chat. */
 	private commands: readonly AcpAvailableCommand[] = [];
 	private readonly commandsChanged = new vscode.EventEmitter<void>();
@@ -173,8 +175,9 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			const args = config.get<string[]>('args') ?? [...this.agent.defaultArgs];
 			const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 			this.log.info(`[${this.agent.label}] starting ${command} ${args.join(' ')}`);
-			const connection = this.readAgentEnv().then(env => AcpConnection.start(command, args, cwd, env, this.createHandlers(), this.log)).then(({ connection, authMethods }) => {
+			const connection = this.readAgentEnv().then(env => AcpConnection.start(command, args, cwd, env, this.createHandlers(), this.log)).then(({ connection, authMethods, imagePrompts }) => {
 				this.authMethods = authMethods;
+				this.imagePrompts = imagePrompts;
 				connection.onDidUpdate(({ update }) => {
 					if (update.sessionUpdate === 'available_commands_update' && update.availableCommands) {
 						this.setCommands(update.availableCommands);
@@ -354,7 +357,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		const cancel = token.onCancellationRequested(() => connection.notify('session/cancel', { sessionId: acpSessionId }));
 
 		try {
-			const prompt = toPromptBlocks(request);
+			const prompt = await toPromptBlocks(request, this.imagePrompts);
 			// The agent is an external process that knows nothing about Nova IDE: hand it the manual once per session.
 			const manual = state.manualSent ? undefined : this.readIdeManual();
 			if (manual) {
@@ -714,10 +717,17 @@ function isAuthError(error: unknown): boolean {
 	return error.code === -32000 || /auth|api key|log ?in|sign ?in|credential|not configured/i.test(error.message);
 }
 
-function toPromptBlocks(request: vscode.ChatRequest): AcpContentBlock[] {
+async function toPromptBlocks(request: vscode.ChatRequest, imagePrompts: boolean): Promise<AcpContentBlock[]> {
 	const blocks: AcpContentBlock[] = [{ type: 'text', text: request.command ? `/${request.command} ${request.prompt}` : request.prompt }];
 	for (const reference of request.references) {
 		const value = reference.value;
+		if (value instanceof vscode.ChatReferenceBinaryData) {
+			// NOVA: an image attached to the chat (dropped, pasted or picked) goes to the agent as an image block.
+			if (imagePrompts && value.mimeType.startsWith('image/')) {
+				blocks.push({ type: 'image', mimeType: value.mimeType, data: Buffer.from(await value.data()).toString('base64') });
+			}
+			continue;
+		}
 		const uri = value instanceof vscode.Uri ? value : value instanceof vscode.Location ? value.uri : undefined;
 		if (uri?.scheme === 'file') {
 			blocks.push({ type: 'resource_link', uri: uri.toString(), name: path.basename(uri.fsPath) });

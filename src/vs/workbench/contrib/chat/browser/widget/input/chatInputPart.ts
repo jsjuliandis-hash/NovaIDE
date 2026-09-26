@@ -1107,9 +1107,7 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		this._attachmentModel = this._register(this.instantiationService.createInstance(ChatAttachmentModel));
 		const attachmentModel = this._attachmentModel;
 		this._register(this._attachmentModel.onDidChange(() => {
-			if (this._chatSessionIsEmpty) {
-				this._emptyInputAttachments.set(this._attachmentModel.attachments, undefined);
-			}
+			// NOVA: attachments are no longer copied to the draft shared by every empty chat (see _getPersistedEmptyInputState).
 			this._syncInputStateToModel();
 		}));
 		// Capture model-configuration changes into the draft input state immediately,
@@ -1773,11 +1771,8 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 			return undefined;
 		}
 
-		const persistedAttachments = this._emptyInputAttachments.read(undefined);
-		state = {
-			...state,
-			attachments: persistedAttachments.length > 0 ? persistedAttachments : state.attachments,
-		};
+		// NOVA: a new (empty) chat tab must not inherit the files attached in another tab; each tab keeps its own attachments in its own input model.
+		state = { ...state, attachments: [] };
 
 		const resolved = this.resolveDraftModel(state.selectedModel, this._currentSessionType, true);
 		if (resolved.changed) {

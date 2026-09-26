@@ -16,7 +16,8 @@
   "enabledApiProposals": [
     "chatSessionsProvider",
     "chatSessionCustomizationProvider",
-    "chatParticipantAdditions"
+    "chatParticipantAdditions",
+    "chatReferenceBinaryData"
   ],
   "capabilities": {
     "virtualWorkspaces": false,

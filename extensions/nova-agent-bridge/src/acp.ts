@@ -36,7 +36,8 @@ export interface AcpPromptResult {
 
 export type AcpContentBlock =
 	| { readonly type: 'text'; readonly text: string }
-	| { readonly type: 'resource_link'; readonly uri: string; readonly name: string };
+	| { readonly type: 'resource_link'; readonly uri: string; readonly name: string }
+	| { readonly type: 'image'; readonly mimeType: string; readonly data: string };
 
 export interface AcpToolCallContent {
 	readonly type: string;
@@ -133,16 +134,16 @@ export class AcpConnection implements vscode.Disposable {
 		});
 	}
 
-	static async start(command: string, args: readonly string[], cwd: string | undefined, env: Record<string, string>, handlers: AcpRequestHandlers, log: vscode.LogOutputChannel): Promise<{ connection: AcpConnection; agentName: string | undefined; authMethods: readonly AcpAuthMethod[] }> {
+	static async start(command: string, args: readonly string[], cwd: string | undefined, env: Record<string, string>, handlers: AcpRequestHandlers, log: vscode.LogOutputChannel): Promise<{ connection: AcpConnection; agentName: string | undefined; authMethods: readonly AcpAuthMethod[]; imagePrompts: boolean }> {
 		const connection = new AcpConnection(command, args, cwd, env, handlers, log);
 		try {
-			const result = await connection.request<{ agentInfo?: { name?: string; version?: string }; authMethods?: AcpAuthMethod[] }>('initialize', {
+			const result = await connection.request<{ agentInfo?: { name?: string; version?: string }; authMethods?: AcpAuthMethod[]; agentCapabilities?: { promptCapabilities?: { image?: boolean } } }>('initialize', {
 				protocolVersion: 1,
 				clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true },
 				clientInfo: { name: 'nova-ide', title: 'Nova IDE', version: vscode.version }
 			});
 			log.info(`connected to ${result.agentInfo?.name ?? command} ${result.agentInfo?.version ?? ''}`);
-			return { connection, agentName: result.agentInfo?.name, authMethods: result.authMethods ?? [] };
+			return { connection, agentName: result.agentInfo?.name, authMethods: result.authMethods ?? [], imagePrompts: !!result.agentCapabilities?.promptCapabilities?.image };
 		} catch (error) {
 			connection.dispose();
 			throw error;

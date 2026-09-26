@@ -1423,6 +1423,16 @@ have to be updated for changes to the rules above, or to support more deeply nes
 	transition: background-color 250ms ease, color 250ms ease;
 }
 
+/* NOVA: the button that cancels a running response is red and larger, so it is not mistaken for a decoration next to the mic and speaker icons. */
+.interactive-session .chat-input-toolbars > .chat-execute-toolbar .monaco-action-bar .action-item > .action-label.codicon-stop-circle {
+	color: var(--vscode-editorError-foreground, #f14c4c) !important;
+	font-size: 22px;
+}
+
+.interactive-session .chat-input-toolbars > .chat-execute-toolbar .monaco-action-bar .action-item > .action-label.codicon-stop-circle:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+}
+
 /* Nudge icon position to ensure it looks optically aligned within the button */
 .interactive-session .chat-input-toolbars > .chat-execute-toolbar .monaco-action-bar .action-item.chat-submit-button > .action-label.codicon-arrow-up-compact::before {
 	display: inline-block;
