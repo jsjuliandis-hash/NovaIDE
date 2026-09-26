@@ -38,6 +38,7 @@ import { IEditorGroupMenuIds, IEditorGroupsView, EditorServiceImpl, IEditorGroup
 import { CloseEditorTabAction, CloseOtherEditorTabsInGroupAction, UnpinEditorAction } from './editorActions.js';
 import { assertReturnsAllDefined, assertReturnsDefined } from '../../../../base/common/types.js';
 import { IEditorService } from '../../../services/editor/common/editorService.js';
+import { INovaAgentTabsService } from '../../../services/novaAgentTabs/browser/novaAgentTabsService.js'; // NOVA
 import { basename, basenameOrAuthority, extname } from '../../../../base/common/resources.js';
 import { RunOnceScheduler } from '../../../../base/common/async.js';
 import { IPathService } from '../../../services/path/common/pathService.js';
@@ -171,8 +172,12 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 		@IEditorResolverService editorResolverService: IEditorResolverService,
 		@IHostService hostService: IHostService,
 		@IMenuService menuService: IMenuService,
+		@INovaAgentTabsService private readonly novaAgentTabs: INovaAgentTabsService, // NOVA
 	) {
 		super(parent, editorPartsView, groupsView, groupView, tabsModel, menuIds, breadcrumbsInHeader, useModernUITabs, contextMenuService, instantiationService, contextKeyService, keybindingService, notificationService, quickInputService, themeService, editorResolverService, hostService, menuService);
+
+		// NOVA: the blue dot on tabs an agent opened
+		this._register(this.novaAgentTabs.onDidChange(editor => this.withTab(editor, (editor, tabIndex, tabContainer) => this.redrawTabAgentDot(editor, tabContainer))));
 
 		// Resolve the correct path library for the OS we are on
 		// If we are connected to remote, this accounts for the
@@ -1004,6 +1009,9 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 		// Tab Editor Label
 		const editorLabel = this.tabResourceLabels.create(tabContainer, { hoverTargetOverride: tabContainer });
 
+		// NOVA: blue dot shown while the tab is marked as opened by an agent
+		tabContainer.appendChild($('.nova-agent-dot', { 'aria-hidden': true }));
+
 		// Tab Actions
 		const tabActionsContainer = $('.tab-actions');
 		tabContainer.appendChild(tabActionsContainer);
@@ -1072,6 +1080,8 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 			// Open tabs editor
 			const editor = this.tabsModel.getEditorByIndex(tabIndex);
 			if (editor) {
+				this.novaAgentTabs.clear(editor); // NOVA: the user saw the tab
+
 				if (e.shiftKey) {
 					let anchor: EditorInput;
 					if (this.lastSingleSelectSelectedEditor && this.tabsModel.isSelected(this.lastSingleSelectSelectedEditor)) {
@@ -1792,6 +1802,13 @@ export class MultiEditorTabsControl extends EditorTabsControl {
 
 		// Selection / active / dirty state
 		this.redrawTabSelectedActiveAndDirty(this.groupsView.activeGroup === this.groupView, editor, tabContainer, tabActionBar);
+
+		// NOVA: opened by an agent
+		this.redrawTabAgentDot(editor, tabContainer);
+	}
+
+	private redrawTabAgentDot(editor: EditorInput, tabContainer: HTMLElement): void {
+		tabContainer.classList.toggle('nova-agent-opened', this.novaAgentTabs.isMarked(editor));
 	}
 
 	private redrawTabLabel(editor: EditorInput, tabIndex: number, tabContainer: HTMLElement, tabLabelWidget: IResourceLabel, tabLabel: IEditorInputLabel): void {

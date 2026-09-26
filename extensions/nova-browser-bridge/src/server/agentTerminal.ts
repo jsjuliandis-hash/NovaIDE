@@ -6,6 +6,7 @@
 
 import { ChildProcess, spawn } from 'child_process';
 import * as vscode from 'vscode';
+import { markTerminalOpenedByAgent } from '../agentTabs';
 
 /** Most output kept per command; older output is dropped so a chatty process cannot exhaust memory. */
 const MAX_OUTPUT_CHARS = 200_000;
@@ -56,8 +57,10 @@ class AgentTerminal implements vscode.Pseudoterminal {
 			this.exitWaiters.splice(0).forEach(resolve => resolve());
 			this.noteFinished();
 		});
-		this.terminal = vscode.window.createTerminal({ name: `Agent: ${command.length > 30 ? `${command.slice(0, 30)}…` : command}`, pty: this });
+		const name = `Agent: ${command.length > 30 ? `${command.slice(0, 30)}…` : command}`;
+		this.terminal = vscode.window.createTerminal({ name, pty: this });
 		this.terminal.show(true);
+		markTerminalOpenedByAgent(name);
 	}
 
 	open(): void { /* the process is started by the constructor */ }

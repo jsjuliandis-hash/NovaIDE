@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as z from 'zod';
+import { markActiveEditorOpenedByAgent } from '../agentTabs';
 import { registerUiTools } from './uiTools';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.jpe', '.gif', '.webp', '.bmp', '.ico', '.avif', '.svg']);
@@ -77,6 +78,7 @@ export function registerIdeTools(server: McpServer): void {
 			const uri = resolveUri(input);
 			await assertFileExists(uri);
 			const kind = await openFile(uri, { line, column, mode: mode ?? 'auto', beside: !!beside });
+			markActiveEditorOpenedByAgent();
 			return textResult(describeOpen(kind, uri));
 		},
 	);
@@ -97,6 +99,7 @@ export function registerIdeTools(server: McpServer): void {
 			await assertFileExists(leftUri);
 			await assertFileExists(rightUri);
 			await vscode.commands.executeCommand('vscode.diff', leftUri, rightUri, title ?? `${path.basename(left)} ↔ ${path.basename(right)}`);
+			markActiveEditorOpenedByAgent();
 			return textResult(`Opened a diff of ${leftUri.fsPath} and ${rightUri.fsPath} in the IDE.`);
 		},
 	);

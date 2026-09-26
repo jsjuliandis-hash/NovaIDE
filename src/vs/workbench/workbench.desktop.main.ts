@@ -192,6 +192,7 @@ import '../platform/novaDonation/electron-browser/novaDonation.js'; // NOVA
 import './contrib/novaDonation/electron-browser/novaDonation.contribution.js'; // NOVA
 import '../platform/novaUiControl/electron-browser/novaUiControl.js'; // NOVA
 import './contrib/novaUiControl/electron-browser/novaUiControl.contribution.js'; // NOVA
+import './contrib/novaAgentTabs/browser/novaAgentTabs.contribution.js'; // NOVA
 import './contrib/chat/electron-browser/tunnelHost.contribution.js';
 
 // Copilot Voice

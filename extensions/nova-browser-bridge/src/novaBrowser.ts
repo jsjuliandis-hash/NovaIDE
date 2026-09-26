@@ -17,6 +17,7 @@ import * as vscode from 'vscode';
 // playwright-core has no bundled browsers; we only ever attach to an existing
 // Chromium view via connectOverCDP, never launch one.
 import type { Browser, ConnectOverCDPTransport, Page } from 'playwright-core';
+import { markActiveEditorOpenedByAgent } from './agentTabs';
 
 /** Result shape mirroring the internal IInvokeFunctionResult, redefined locally since
  * extensions cannot import from `src/vs/platform/...`. */
@@ -139,6 +140,9 @@ export class NovaBrowser implements vscode.Disposable {
 		// onDidOpenBrowserTab may not have fired synchronously yet in all cases;
 		// _track is idempotent so calling it again here is safe.
 		const entry = this._track(tab);
+		if (!opts?.background) {
+			markActiveEditorOpenedByAgent(); // the new page is the active editor now
+		}
 		return entry.id;
 	}
 

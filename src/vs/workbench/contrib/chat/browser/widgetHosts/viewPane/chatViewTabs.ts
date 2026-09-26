@@ -73,6 +73,9 @@ interface IStoredChatViewTabs {
 
 const STORAGE_KEY = 'nova.chat.viewTabs';
 
+/** Data type of a chat tab being dragged inside the tab strip. */
+const CHAT_TAB_DRAG_TYPE = 'application/x-nova-chat-tab';
+
 export class ChatViewTabs extends Disposable {
 
 	private readonly _onDidChange = this._register(new Emitter<void>());
@@ -180,6 +183,18 @@ export class ChatViewTabs extends Disposable {
 			return this.delegate.newSessionOfType(URI.from({ scheme: sessionType, path: `/untitled-${generateUuid()}` }));
 		}
 		return await this.delegate.newSession() as IChatModel | undefined;
+	}
+
+	/** Moves a tab to another position (drag and drop); the active tab stays the same one. */
+	move(from: number, to: number): void {
+		if (from === to || !this._tabs[from] || to < 0 || to >= this._tabs.length) {
+			return;
+		}
+		const activeTab = this._tabs[this._active];
+		const [tab] = this._tabs.splice(from, 1);
+		this._tabs.splice(to, 0, tab);
+		this._active = this._tabs.indexOf(activeTab);
+		this._onDidChange.fire();
 	}
 
 	async close(index: number): Promise<void> {
@@ -367,6 +382,7 @@ export class ChatViewTabsWidget extends Disposable {
 
 	private readonly renderDisposables = this._register(new DisposableStore());
 	private strip: HTMLElement | undefined;
+	private draggedIndex: number | undefined;
 
 	constructor(
 		container: HTMLElement,
@@ -421,6 +437,7 @@ export class ChatViewTabsWidget extends Disposable {
 			const close = append(element, $(`span.nova-chat-tab-close${ThemeIcon.asCSSSelector(Codicon.close)}`, { role: 'button' }));
 
 			this.renderDisposables.add(this.hoverService.setupDelayedHover(element, () => ({ content: this.hoverText(tab) })));
+			this.registerDragAndDrop(element, index);
 			this.renderDisposables.add(addDisposableListener(element, EventType.MOUSE_DOWN, (e: MouseEvent) => {
 				if (e.button === 1) {
 					EventHelper.stop(e, true);
@@ -454,6 +471,57 @@ export class ChatViewTabsWidget extends Disposable {
 				element.scrollIntoView({ block: 'nearest', inline: 'nearest' });
 			}
 		});
+	}
+
+	/** Lets the user drag a tab to another position in the strip. */
+	private registerDragAndDrop(element: HTMLElement, index: number): void {
+		element.draggable = true;
+
+		const dropSide = (e: DragEvent): 'before' | 'after' => {
+			const rect = element.getBoundingClientRect();
+			return e.clientX < rect.left + rect.width / 2 ? 'before' : 'after';
+		};
+		const clearIndicator = () => element.classList.remove('drop-before', 'drop-after');
+
+		this.renderDisposables.add(addDisposableListener(element, EventType.DRAG_START, (e: DragEvent) => {
+			this.draggedIndex = index;
+			element.classList.add('dragging');
+			if (e.dataTransfer) {
+				e.dataTransfer.effectAllowed = 'move';
+				e.dataTransfer.setData(CHAT_TAB_DRAG_TYPE, String(index));
+			}
+		}));
+		this.renderDisposables.add(addDisposableListener(element, EventType.DRAG_END, () => {
+			this.draggedIndex = undefined;
+			element.classList.remove('dragging');
+		}));
+		this.renderDisposables.add(addDisposableListener(element, EventType.DRAG_OVER, (e: DragEvent) => {
+			if (this.draggedIndex === undefined || this.draggedIndex === index) {
+				return;
+			}
+			EventHelper.stop(e, true);
+			if (e.dataTransfer) {
+				e.dataTransfer.dropEffect = 'move';
+			}
+			const side = dropSide(e);
+			element.classList.toggle('drop-before', side === 'before');
+			element.classList.toggle('drop-after', side === 'after');
+		}));
+		this.renderDisposables.add(addDisposableListener(element, EventType.DRAG_LEAVE, clearIndicator));
+		this.renderDisposables.add(addDisposableListener(element, EventType.DROP, (e: DragEvent) => {
+			const from = this.draggedIndex;
+			this.draggedIndex = undefined;
+			clearIndicator();
+			if (from === undefined || from === index) {
+				return;
+			}
+			EventHelper.stop(e, true);
+			let to = index + (dropSide(e) === 'after' ? 1 : 0);
+			if (from < to) {
+				to--; // the dragged tab leaves its old slot first
+			}
+			this.tabs.move(from, to);
+		}));
 	}
 
 	private hoverText(tab: IChatViewTab): string {

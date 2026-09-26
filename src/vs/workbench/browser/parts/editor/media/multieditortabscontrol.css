@@ -112,6 +112,23 @@
 
 /* Tab */
 
+/* NOVA: blue dot on a tab an agent opened, until the user sees it (same color as the dot on chat tabs) */
+.monaco-workbench .part.editor > .content .editor-group-container > .title .tabs-container > .tab > .nova-agent-dot {
+	display: none;
+	flex: 0 0 auto;
+	width: 6px;
+	height: 6px;
+	margin: auto 4px;
+	position: relative;
+	z-index: 1;
+	border-radius: 50%;
+	background-color: var(--vscode-activityBarBadge-background, var(--vscode-focusBorder));
+}
+
+.monaco-workbench .part.editor > .content .editor-group-container > .title .tabs-container > .tab.nova-agent-opened > .nova-agent-dot {
+	display: block;
+}
+
 .monaco-workbench .part.editor > .content .editor-group-container > .title .tabs-container > .tab {
 	position: relative;
 	display: flex;

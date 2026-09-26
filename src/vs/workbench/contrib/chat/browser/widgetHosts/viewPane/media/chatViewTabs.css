@@ -50,6 +50,19 @@
 	box-sizing: border-box;
 }
 
+/* Drag and drop to reorder */
+.nova-chat-tab.dragging {
+	opacity: 0.5;
+}
+
+.nova-chat-tab.drop-before {
+	box-shadow: inset 2px 0 0 var(--vscode-focusBorder);
+}
+
+.nova-chat-tab.drop-after {
+	box-shadow: inset -2px 0 0 var(--vscode-focusBorder);
+}
+
 .nova-chat-tab:hover {
 	background-color: var(--vscode-toolbar-hoverBackground);
 }

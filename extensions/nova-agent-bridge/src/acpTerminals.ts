@@ -58,8 +58,11 @@ class AcpTerminal implements vscode.Pseudoterminal {
 			this.exitWaiters.splice(0).forEach(resolve => resolve());
 		});
 		const commandLine = [params.command, ...(params.args ?? [])].join(' ');
-		this.terminal = vscode.window.createTerminal({ name: `Agent: ${commandLine.length > 30 ? `${commandLine.slice(0, 30)}…` : commandLine}`, pty: this });
+		const name = `Agent: ${commandLine.length > 30 ? `${commandLine.slice(0, 30)}…` : commandLine}`;
+		this.terminal = vscode.window.createTerminal({ name, pty: this });
 		this.terminal.show(true);
+		// NOVA: blue dot on the terminal tab until the user sees it (command lives in the core; never break the tool if it fails)
+		void Promise.resolve(vscode.commands.executeCommand('nova.agentTabs.markTerminal', name)).then(undefined, () => undefined);
 	}
 
 	open(): void { /* the process is started by the constructor */ }
