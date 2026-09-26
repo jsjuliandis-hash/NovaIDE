@@ -60,18 +60,7 @@ const LEGACY_MODE_ID = 'acp.mode';
 /** Environment variable an agent reads for each API key provider ACP reports in `authMethods[]._meta['api-key'].provider`. */
 const API_KEY_ENV: Record<string, string> = { openai: 'OPENAI_API_KEY', google: 'GEMINI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
 
-const TOOL_ICONS: Record<string, string> = {
-	read: '$(file)',
-	edit: '$(edit)',
-	delete: '$(trash)',
-	move: '$(arrow-right)',
-	search: '$(search)',
-	execute: '$(terminal)',
-	think: '$(lightbulb)',
-	fetch: '$(globe)',
-};
-
-/** Tool kinds whose title is a file path, safe to show in the chat; every other kind may carry raw command output. */
+/** Tool kinds whose title is a file path, safe to show in the chat when a call fails; every other kind may carry raw command output. */
 const FILE_TOOL_KINDS = new Set(['read', 'edit', 'delete', 'move', 'search']);
 
 export class AgentSessionProvider implements vscode.ChatSessionContentProvider, vscode.Disposable {
@@ -468,8 +457,8 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				const title = target ? `${update.title && update.title !== kind ? update.title : kind ?? ''} ${vscode.workspace.asRelativePath(target)}`.trim() : (update.title ?? known?.title ?? '');
 				toolCalls.set(id, { title, kind });
 				if (update.status === 'in_progress' && target) {
-					// NOVA: only file tools show their path; the title of any other tool (shell command, fetch) is a raw command or log, so show "Thinking…".
-						stream.progress(FILE_TOOL_KINDS.has(kind ?? '') ? `${TOOL_ICONS[kind ?? '']} ${title}` : vscode.l10n.t('Thinking…'));
+					// NOVA: whatever the tool (file, shell, fetch), show only "Thinking…": titles are raw paths, commands or logs, and the chat does not render icon codes like "$(edit)".
+						stream.progress(vscode.l10n.t('Thinking…'));
 				} else if (update.status === 'completed' && (kind === 'edit' || kind === 'delete' || kind === 'move')) {
 					for (const location of update.locations ?? []) {
 						editedFiles.add(location.path);
