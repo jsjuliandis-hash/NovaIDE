@@ -6,6 +6,7 @@
 
 import { ChildProcess, spawn } from 'child_process';
 import * as vscode from 'vscode';
+import { AcpTerminals } from './acpTerminals';
 
 /**
  * Minimal Agent Client Protocol (ACP) types used by Nova. The protocol is JSON-RPC 2.0 over
@@ -107,6 +108,7 @@ export class AcpConnection implements vscode.Disposable {
 	private nextId = 0;
 	private buffer = '';
 	private exited = false;
+	private readonly terminals = new AcpTerminals();
 
 	private readonly onDidUpdateEmitter = new vscode.EventEmitter<{ sessionId: string; update: AcpSessionUpdate }>();
 	readonly onDidUpdate = this.onDidUpdateEmitter.event;
@@ -134,7 +136,7 @@ export class AcpConnection implements vscode.Disposable {
 		try {
 			const result = await connection.request<{ agentInfo?: { name?: string; version?: string }; authMethods?: AcpAuthMethod[] }>('initialize', {
 				protocolVersion: 1,
-				clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: false },
+				clientCapabilities: { fs: { readTextFile: true, writeTextFile: true }, terminal: true },
 				clientInfo: { name: 'nova-ide', title: 'Nova IDE', version: vscode.version }
 			});
 			log.info(`connected to ${result.agentInfo?.name ?? command} ${result.agentInfo?.version ?? ''}`);
@@ -174,6 +176,7 @@ export class AcpConnection implements vscode.Disposable {
 		} else {
 			this.process.kill();
 		}
+		this.terminals.dispose();
 		this.onDidUpdateEmitter.dispose();
 		this.onDidExitEmitter.dispose();
 	}
@@ -248,6 +251,21 @@ export class AcpConnection implements vscode.Disposable {
 					break;
 				case 'fs/write_text_file':
 					result = await this.handlers.writeTextFile(params);
+					break;
+				case 'terminal/create':
+					result = this.terminals.create(params);
+					break;
+				case 'terminal/output':
+					result = this.terminals.output(params.terminalId);
+					break;
+				case 'terminal/wait_for_exit':
+					result = await this.terminals.waitForExit(params.terminalId);
+					break;
+				case 'terminal/kill':
+					result = this.terminals.kill(params.terminalId);
+					break;
+				case 'terminal/release':
+					result = this.terminals.release(params.terminalId);
 					break;
 				default:
 					this.write({ jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } });

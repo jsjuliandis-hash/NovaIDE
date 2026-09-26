@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import * as z from 'zod';
+import { registerUiTools } from './uiTools';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.jpe', '.gif', '.webp', '.bmp', '.ico', '.avif', '.svg']);
 const IMAGE_VIEWER_ID = 'imagePreview.previewEditor';
@@ -19,6 +20,7 @@ export const NOVA_IDE_MCP_INSTRUCTIONS = [
 	'To show a file or an IMAGE to the user, call ide_open_file (images open in the built-in image viewer).',
 	'Never use start/open/xdg-open or a browser with file:// for that.',
 	'Use ide_show_diff for changes, browser_* for web pages, and call ide_manual for the full guide.',
+	'To act on the IDE itself use ide_ui_snapshot, ide_ui_click, ide_ui_type, ide_ui_key, ide_ui_screenshot and ide_run_command; to run commands use ide_terminal_run.',
 ].join(' ');
 
 /** Reads the Nova IDE manual (SKILL.md) that ships inside this extension. */
@@ -57,6 +59,8 @@ async function assertFileExists(uri: vscode.Uri): Promise<void> {
 }
 
 export function registerIdeTools(server: McpServer): void {
+	registerUiTools(server);
+
 	server.registerTool(
 		'ide_open_file',
 		{

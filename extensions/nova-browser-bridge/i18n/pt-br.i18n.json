@@ -64,7 +64,13 @@
 			"Update {0} with the Nova Browser Bridge MCP server entry?": "Atualizar {0} com a entrada do servidor MCP da Nova Browser Bridge?",
 			"Create {0} with the Nova Browser Bridge MCP server entry?": "Criar {0} com a entrada do servidor MCP da Nova Browser Bridge?",
 			"Nova Browser Bridge OK — {0}": "Nova Browser Bridge OK — {0}",
-			"Nova Browser Bridge self-test failed: {0}": "Falha no autoteste da Nova Browser Bridge: {0}"
+			"Nova Browser Bridge self-test failed: {0}": "Falha no autoteste da Nova Browser Bridge: {0}",
+			"Allow for This Session": "Permitir nesta sessão",
+			"An agent wants to control the Nova IDE interface: run IDE commands, click, type and press keys. Allow this until the IDE is closed?": "Um agente quer controlar a interface da Nova IDE: executar comandos da IDE, clicar, digitar e pressionar teclas. Permitir até a IDE ser fechada?",
+			"Run": "Executar",
+			"Always Allow This Session": "Sempre permitir nesta sessão",
+			"An agent wants to run this command in a terminal:": "Um agente quer executar este comando em um terminal:",
+			"Process exited with code {0}": "Processo encerrado com código {0}"
 		}
 	}
 }

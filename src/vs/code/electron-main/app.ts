@@ -48,6 +48,7 @@ import { getResolvedShellEnv } from '../../platform/shell/node/shellEnv.js';
 import { IExtensionHostStarter, ipcExtensionHostStarterChannelName } from '../../platform/extensions/common/extensionHostStarter.js';
 import { ExtensionHostStarter } from '../../platform/extensions/electron-main/extensionHostStarter.js';
 import { IExternalTerminalMainService } from '../../platform/externalTerminal/electron-main/externalTerminal.js';
+import { INovaUiControlMainService, NovaUiControlMainService } from '../../platform/novaUiControl/electron-main/novaUiControlMainService.js'; // NOVA
 import { INovaTtsMainService, NovaTtsMainService } from '../../platform/novaTts/electron-main/novaTtsMainService.js'; // NOVA
 import { INovaDonationMainService, NovaDonationMainService } from '../../platform/novaDonation/electron-main/novaDonationMainService.js'; // NOVA
 import { LinuxExternalTerminalService, MacExternalTerminalService, WindowsExternalTerminalService } from '../../platform/externalTerminal/node/externalTerminalService.js';
@@ -1305,6 +1306,7 @@ export class CodeApplication extends Disposable {
 
 		// Donation popup (NOVA)
 		services.set(INovaDonationMainService, new SyncDescriptor(NovaDonationMainService));
+		services.set(INovaUiControlMainService, new SyncDescriptor(NovaUiControlMainService)); // NOVA
 
 		// Backups
 		const backupMainService = new BackupMainService(this.environmentMainService, this.configurationService, this.logService, this.stateService);
@@ -1489,6 +1491,8 @@ export class CodeApplication extends Disposable {
 		// Donation popup (NOVA)
 		const novaDonationChannel = ProxyChannel.fromService(accessor.get(INovaDonationMainService), disposables);
 		mainProcessElectronServer.registerChannel('novaDonation', novaDonationChannel);
+		const novaUiControlChannel = ProxyChannel.fromService(accessor.get(INovaUiControlMainService), disposables); // NOVA
+		mainProcessElectronServer.registerChannel('novaUiControl', novaUiControlChannel); // NOVA
 
 		// Sandbox Helper
 		const sandboxHelperChannel = ProxyChannel.fromService(accessor.get(ISandboxHelperMainService), disposables);

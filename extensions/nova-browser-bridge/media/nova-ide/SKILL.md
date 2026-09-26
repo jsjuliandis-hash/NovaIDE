@@ -35,6 +35,13 @@ Web pages open in tabs of the IDE's Integrated Browser and you can drive them:
 5. `browser_console` shows console messages and errors; `browser_run_playwright` runs Playwright code for anything else (the user must confirm it once per workspace).
 6. `devserver_status` and `devserver_restart` tell whether the project's dev server is running and restart it (it opens the URL in the browser once ready).
 
+## Acting on the IDE itself
+
+- `ide_ui_snapshot` lists what is clickable in the IDE window (each element has a number); `ide_ui_click`, `ide_ui_type` and `ide_ui_key` act on it; `ide_ui_screenshot` shows the window. Take a new snapshot after every action, because the numbers change. While a modal dialog is open, only its buttons are listed.
+- `ide_run_command` runs an IDE command by id (for example `workbench.action.showCommands`). Prefer it to clicking when a command exists.
+- `ide_terminal_run` runs a command in a visible IDE terminal and returns the output and exit code; the user approves each command. For a long-running command it returns the terminal id: continue with `ide_terminal_read`, `ide_terminal_send` and `ide_terminal_kill`.
+- The user is asked once per session before the interface is controlled. If denied, do not insist: explain what you wanted to do.
+
 ## Terminals and CLI
 
 - Integrated terminals already have `NOVA_BROWSER_URL`, `NOVA_BROWSER_MCP_URL`, `NOVA_BROWSER_TOKEN`, `NOVA_BROWSER_CDP_URL` and the `nova-browser` command (`nova-browser pages`, `snapshot`, `screenshot -o file.png`, `click`, `wait-reload`) on the `PATH`.
