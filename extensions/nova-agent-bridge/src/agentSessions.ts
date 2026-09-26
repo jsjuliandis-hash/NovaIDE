@@ -493,8 +493,14 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	}
 
 	private reportError(error: unknown, stream: vscode.ChatResponseStream): vscode.ChatResult {
-		const message = error instanceof Error ? error.message : String(error);
-		this.log.error(message);
+		let message = error instanceof Error ? error.message : String(error);
+		// NOVA: the agent's reason usually sits in error.data (the message alone is just "Internal error").
+		const data = (error as { data?: unknown } | undefined)?.data;
+		this.log.error(data === undefined ? message : `${message}: ${typeof data === 'string' ? data : JSON.stringify(data)}`);
+		const details = (data as { details?: unknown } | undefined)?.details;
+		if (typeof details === 'string' && details && !message.includes(details)) {
+			message = `${message}: ${details}`; // e.g. Gemini: "Cannot enable privileged approval modes in an untrusted folder."
+		}
 		const isAuth = isAuthError(error);
 		if (isAuth) {
 			stream.markdown(vscode.l10n.t('{0} is not signed in. Run `{1}` in a terminal and try again.', this.agent.label, this.agent.loginHint));

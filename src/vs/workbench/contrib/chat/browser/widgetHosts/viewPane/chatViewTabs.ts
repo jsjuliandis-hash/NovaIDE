@@ -34,7 +34,7 @@ import { IChatModelReference, IChatService } from '../../../common/chatService/c
 import { IChatSessionProviderOptionItem, IChatSessionsService, localChatSessionType } from '../../../common/chatSessionsService.js';
 import { IChatModel } from '../../../common/model/chatModel.js';
 import { getChatSessionType, isUntitledChatSession } from '../../../common/model/chatUri.js';
-import { ChatViewId } from '../../chat.js';
+import { ChatViewId, IChatWidgetService } from '../../chat.js';
 
 /** What the tabs need from the Chat view that hosts them. */
 export interface IChatViewTabsDelegate {
@@ -660,6 +660,7 @@ registerAction2(class extends Action2 {
 		const viewsService = accessor.get(IViewsService);
 		const chatSessionsService = accessor.get(IChatSessionsService);
 		const chatService = accessor.get(IChatService);
+		const chatWidgetService = accessor.get(IChatWidgetService);
 
 		const problems: string[] = [];
 		const contributions = chatSessionsService.getAllChatSessionContributions();
@@ -727,7 +728,14 @@ registerAction2(class extends Action2 {
 		}
 
 		if (args?.prompt) {
-			await chatService.sendRequest(resource, args.prompt, { agentIdSilent: sessionType });
+			// Through the widget, so the tab shows the conversation: a request sent straight to the chat service commits the
+			// untitled session to a new resource that the widget never switches to (the tab stays on the welcome screen).
+			const widget = chatWidgetService.getWidgetBySessionResource(resource);
+			if (widget) {
+				await widget.acceptInput(args.prompt, { preserveFocus: true });
+			} else {
+				await chatService.sendRequest(resource, args.prompt, { agentIdSilent: sessionType });
+			}
 		}
 
 		return { opened: true, provider: sessionType, session: resource.toString(), selected: applied, promptSent: !!args?.prompt, problems };
