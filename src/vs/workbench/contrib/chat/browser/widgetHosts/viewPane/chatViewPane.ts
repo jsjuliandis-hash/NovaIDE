@@ -202,6 +202,7 @@ export class ChatViewPane extends ViewPane implements IViewWelcomeDelegate, ICha
 			loadSession: resource => this.loadSession(resource),
 			// NOVA: a new tab starts blank (Local, no provider or model chosen), not with the provider used last.
 			newSession: () => this.startNewLocalSession(),
+			newSessionOfType: resource => this.loadSession(resource, 'explicitOverride'),
 		}, !!(this.viewState.sessionResource || this.viewState.sessionId)));
 		this.sessionsViewerVisible = false; // will be updated from layout code
 		this.sessionsViewerSidebarWidth = Math.max(ChatViewPane.SESSIONS_SIDEBAR_MIN_WIDTH, this.viewState.sessionsSidebarWidth ?? ChatViewPane.SESSIONS_SIDEBAR_DEFAULT_WIDTH);

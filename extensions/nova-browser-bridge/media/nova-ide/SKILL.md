@@ -40,7 +40,19 @@ Web pages open in tabs of the IDE's Integrated Browser and you can drive them:
 - `ide_ui_snapshot` lists what is clickable in the IDE window (each element has a number); `ide_ui_click`, `ide_ui_type` and `ide_ui_key` act on it; `ide_ui_screenshot` shows the window. Take a new snapshot after every action, because the numbers change. While a modal dialog is open, only its buttons are listed.
 - `ide_run_command` runs an IDE command by id (for example `workbench.action.showCommands`). Prefer it to clicking when a command exists.
 - `ide_terminal_run` runs a command in a visible IDE terminal and returns the output and exit code; the user approves each command. For a long-running command it returns the terminal id: continue with `ide_terminal_read`, `ide_terminal_send` and `ide_terminal_kill`.
-- The user is asked once per session before the interface is controlled. If denied, do not insist: explain what you wanted to do.
+- Controlling the interface needs no confirmation; terminal commands still ask the user.
+
+### Opening a new chat tab with a given provider and model
+
+When the user asks for "a new tab/aba/guia in the chat" (with a provider and/or model), open a **new tab next to the current one**. The current tab must stay open and untouched, because it is the conversation you are in and may be working.
+
+1. Call `ide_chat_new_tab` with `provider` ("Claude Code", "Codex CLI", "Gemini CLI", "OpenCode", "NVIDIA", "OpenRouter"), and optionally `model`, `mode`, `effort` and `prompt` (first message sent in the new tab). It adds a tab next to the current one, selects the provider, model and mode, and returns what ended up selected. A unique part of the model name is enough (for example `"Sonnet"` or `"gemini 3.1 flash lite"`). If a name does not match, the result lists the valid providers, pickers and options: call it again with the right ones. Do not use screenshots or clicks for this.
+2. Do **not** use the "New Chat" button of the chat toolbar (Ctrl+N, `workbench.action.chat.newChat`, `workbench.action.chat.newLocalChat`) or any `openNewChatSession*` command: they start a new chat *in the tab you are in*, replacing your conversation. Never close, reload or reuse your own tab.
+3. If the user gave no prompt for the tab, omit `prompt` and say which tab is ready.
+
+Fallback, only if `ide_chat_new_tab` is unavailable: `ide_run_command` with `workbench.action.chat.nova.newTab` adds a blank tab; then click the session-type button at the bottom-left of the input box ("Local"), which opens a popup that `ide_ui_snapshot` does not list (use `ide_ui_screenshot` and `ide_ui_click` with `x`/`y`), and open the model button by its `ref`. Long lists (OpenRouter, NVIDIA) have a search box.
+
+`ide_ui_click` needs `ref` (a number from the snapshot) or both `x` and `y`. Every click returns a fresh snapshot, so do not keep numbers from before.
 
 ## Terminals and CLI
 

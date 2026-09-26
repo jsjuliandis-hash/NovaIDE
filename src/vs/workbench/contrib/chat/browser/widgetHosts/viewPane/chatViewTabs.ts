@@ -19,6 +19,7 @@ import { isEqual } from '../../../../../../base/common/resources.js';
 import Severity from '../../../../../../base/common/severity.js';
 import { ThemeIcon } from '../../../../../../base/common/themables.js';
 import { URI, UriComponents } from '../../../../../../base/common/uri.js';
+import { generateUuid } from '../../../../../../base/common/uuid.js';
 import { localize, localize2 } from '../../../../../../nls.js';
 import { Action2, registerAction2 } from '../../../../../../platform/actions/common/actions.js';
 import { IDialogService } from '../../../../../../platform/dialogs/common/dialogs.js';
@@ -41,6 +42,8 @@ export interface IChatViewTabsDelegate {
 	loadSession(resource: URI): Promise<unknown>;
 	/** Starts a new session (of the default session type) in the view's widget. */
 	newSession(): Promise<unknown>;
+	/** Starts a new session of the given (non-local) session type in the view's widget. */
+	newSessionOfType(resource: URI): Promise<IChatModel | undefined>;
 }
 
 /** Implemented by the Chat view so commands can reach its tabs. */
@@ -168,11 +171,15 @@ export class ChatViewTabs extends Disposable {
 		}
 	}
 
-	async newTab(): Promise<void> {
+	/** Opens a blank tab; with a session type, the tab starts a session of that type instead of a Local one. */
+	async newTab(sessionType?: string): Promise<IChatModel | undefined> {
 		this._tabs.push(this.createTab(undefined, undefined));
 		this._active = this._tabs.length - 1;
 		this._onDidChange.fire();
-		await this.delegate.newSession();
+		if (sessionType && sessionType !== localChatSessionType) {
+			return this.delegate.newSessionOfType(URI.from({ scheme: sessionType, path: `/untitled-${generateUuid()}` }));
+		}
+		return await this.delegate.newSession() as IChatModel | undefined;
 	}
 
 	async close(index: number): Promise<void> {
@@ -485,6 +492,177 @@ registerAction2(class extends Action2 {
 		const viewsService = accessor.get(IViewsService);
 		await viewsService.openView(ChatViewId, true);
 		await getChatTabs(viewsService)?.newTab();
+	}
+});
+
+/** Arguments of `workbench.action.chat.nova.openTab`. Names are matched without regard to case. */
+interface IOpenChatTabArgs {
+	/** Session type, name or display name of the provider (for example `nova-openrouter`, `OpenRouter`, `Claude Code`). Default: Local. */
+	readonly provider?: string;
+	readonly model?: string;
+	readonly mode?: string;
+	readonly effort?: string;
+	/** Any other picker, keyed by option group id or name. */
+	readonly options?: Record<string, string>;
+	/** Sent as the first message of the new tab. */
+	readonly prompt?: string;
+}
+
+const OPTION_GROUP_TIMEOUT = 30_000;
+const OPTION_KEY_ALIASES: Record<string, readonly string[]> = {
+	model: ['model', 'acp.model'],
+	mode: ['mode', 'acp.mode'],
+	effort: ['effort', 'thought_level', 'reasoning_effort', 'reasoning', 'thinking'],
+};
+
+function normalizeName(value: string): string {
+	return value.trim().toLowerCase();
+}
+
+/** Waits until the provider has reported its pickers (models, modes…): the agent discovers them after it starts. */
+function waitForOptionGroups(chatSessionsService: IChatSessionsService, sessionType: string): Promise<void> {
+	if (chatSessionsService.getOptionGroupsForSessionType(sessionType)?.length) {
+		return Promise.resolve();
+	}
+	return new Promise(resolve => {
+		const store = new DisposableStore();
+		const done = () => {
+			store.dispose();
+			resolve();
+		};
+		const handle = setTimeout(done, OPTION_GROUP_TIMEOUT);
+		store.add({ dispose: () => clearTimeout(handle) });
+		store.add(chatSessionsService.onDidChangeOptionGroups(type => {
+			if (type === sessionType && chatSessionsService.getOptionGroupsForSessionType(sessionType)?.length) {
+				done();
+			}
+		}));
+	});
+}
+
+function findOptionGroup(groups: readonly { id: string; name: string }[], key: string): { id: string; name: string } | undefined {
+	const wanted = normalizeName(key);
+	const names = OPTION_KEY_ALIASES[wanted] ?? [wanted];
+	return groups.find(g => names.includes(normalizeName(g.id)) || normalizeName(g.name) === wanted)
+		?? groups.find(g => names.some(n => normalizeName(g.id).endsWith(`.${n}`) || normalizeName(g.id).endsWith(`_${n}`)));
+}
+
+/** Lowercase words of a name; separators such as spaces, dashes and slashes do not matter. */
+function nameWords(value: string): string[] {
+	return value.toLowerCase().split(/[\s\-_/:()]+/).filter(Boolean);
+}
+
+/** Items whose id or name contains every word of `value`, in any order. */
+function findOptionItems(items: readonly IChatSessionProviderOptionItem[], value: string): IChatSessionProviderOptionItem[] {
+	const exact = items.find(i => normalizeName(i.id) === normalizeName(value) || normalizeName(i.name) === normalizeName(value));
+	if (exact) {
+		return [exact];
+	}
+	const words = nameWords(value);
+	const matches = items.filter(i => {
+		const haystack = nameWords(`${i.id} ${i.name}`);
+		return words.length > 0 && words.every(w => haystack.some(h => h.includes(w)));
+	});
+	// Prefer the items where the words are whole words (so "flash" does not pick "flash-image" over "flash" when both match)
+	const whole = matches.filter(i => {
+		const haystack = nameWords(`${i.id} ${i.name}`);
+		return words.every(w => haystack.includes(w));
+	});
+	const found = whole.length ? whole : matches;
+	// "flash-lite" next to "flash-lite-preview" and "flash-lite-image": the base model is the one whose id the others extend
+	const base = found.reduce<IChatSessionProviderOptionItem | undefined>((shortest, i) => !shortest || i.id.length < shortest.id.length ? i : shortest, undefined);
+	return base && found.every(i => i.id.startsWith(base.id)) ? [base] : found;
+}
+
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.chat.nova.openTab',
+			title: localize2('nova.chatTabs.openTab', "Open Chat Tab with Provider and Model"),
+			category: localize2('nova.chatTabs.category', "Chat"),
+			f1: false,
+		});
+	}
+
+	/**
+	 * Opens a new chat tab (keeping the others) for a provider, with model, mode and effort already selected,
+	 * and optionally sends the first message. Returns what ended up selected, or why something could not be.
+	 */
+	async run(accessor: ServicesAccessor, args?: IOpenChatTabArgs): Promise<object> {
+		const viewsService = accessor.get(IViewsService);
+		const chatSessionsService = accessor.get(IChatSessionsService);
+		const chatService = accessor.get(IChatService);
+
+		const problems: string[] = [];
+		const contributions = chatSessionsService.getAllChatSessionContributions();
+		const providers = contributions.map(c => ({ type: c.type, name: c.displayName || c.name }));
+		let sessionType = localChatSessionType;
+		if (args?.provider) {
+			const wanted = normalizeName(args.provider);
+			const match = contributions.find(c => [c.type, c.name, c.displayName, ...(c.alternativeIds ?? [])].some(n => n && normalizeName(n) === wanted));
+			if (!match && wanted !== normalizeName(localChatSessionType)) {
+				return { opened: false, error: `Unknown provider "${args.provider}".`, providers };
+			}
+			sessionType = match?.type ?? localChatSessionType;
+		}
+
+		await viewsService.openView(ChatViewId, true);
+		const tabs = getChatTabs(viewsService);
+		if (!tabs) {
+			return { opened: false, error: 'The Chat view is not available.' };
+		}
+		const model = await tabs.newTab(sessionType);
+		const resource = model?.sessionResource;
+		if (!resource) {
+			return { opened: false, error: `Could not open a ${sessionType} session.` };
+		}
+
+		const requested = new Map<string, string>();
+		for (const key of ['model', 'mode', 'effort'] as const) {
+			if (args?.[key]) {
+				requested.set(key, args[key]);
+			}
+		}
+		for (const [key, value] of Object.entries(args?.options ?? {})) {
+			requested.set(key, value);
+		}
+
+		const applied: Record<string, string> = {};
+		if (requested.size && sessionType !== localChatSessionType) {
+			await waitForOptionGroups(chatSessionsService, sessionType);
+			const groups = chatSessionsService.getOptionGroupsForSessionType(sessionType) ?? [];
+			const updates = new Map<string, string>();
+			for (const [key, value] of requested) {
+				const group = findOptionGroup(groups, key);
+				if (!group) {
+					problems.push(`No picker "${key}". Pickers: ${groups.map(g => `${g.id} ("${g.name}")`).join(', ') || 'none reported yet'}.`);
+					continue;
+				}
+				const groupItems = groups.find(g => g.id === group.id)?.items ?? [];
+				const candidates = findOptionItems(groupItems, value);
+				if (candidates.length !== 1) {
+					const listed = (candidates.length ? candidates : groupItems).slice(0, 40).map(i => i.id).join(', ');
+					problems.push(candidates.length
+						? `"${value}" matches ${candidates.length} options in picker "${group.id}"; be more specific: ${listed}.`
+						: `No option "${value}" in picker "${group.id}". Options: ${listed}.`);
+					continue;
+				}
+				const item = candidates[0];
+				updates.set(group.id, item.id);
+				applied[group.id] = item.name;
+			}
+			if (updates.size) {
+				chatSessionsService.updateSessionOptions(resource, updates);
+			}
+		} else if (requested.size) {
+			problems.push('The Local provider has no provider pickers; pass a provider.');
+		}
+
+		if (args?.prompt) {
+			await chatService.sendRequest(resource, args.prompt, { agentIdSilent: sessionType });
+		}
+
+		return { opened: true, provider: sessionType, session: resource.toString(), selected: applied, promptSent: !!args?.prompt, problems };
 	}
 });
 

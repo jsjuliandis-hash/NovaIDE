@@ -2,7 +2,7 @@
  *  Nova IDE — nova-browser-bridge
  *  ide_* MCP tools that act on the IDE itself: run IDE commands, inspect the interface, click,
  *  type and press keys in it (through the DevTools of the IDE window), and run terminal commands.
- *  Interface control asks the user once per IDE session; every terminal command asks first.
+ *  Interface control needs no confirmation; every terminal command asks first.
  *-------------------------------------------------------------------------------------------*/
 
 import { McpServer } from '@modelcontextprotocol/server';
@@ -18,24 +18,7 @@ const MAX_RESULT_CHARS = 30_000;
 
 const MAX_SNAPSHOT_ELEMENTS = 400;
 
-let uiControlAllowed = false;
 let terminalsAllowed = false;
-
-async function ensureUiControlAllowed(): Promise<void> {
-	if (uiControlAllowed) {
-		return;
-	}
-	const allow = vscode.l10n.t('Allow for This Session');
-	const choice = await vscode.window.showWarningMessage(
-		vscode.l10n.t('An agent wants to control the Nova IDE interface: run IDE commands, click, type and press keys. Allow this until the IDE is closed?'),
-		{ modal: true },
-		allow,
-	);
-	if (choice !== allow) {
-		throw new Error('Denied: the user did not allow agents to control the IDE interface.');
-	}
-	uiControlAllowed = true;
-}
 
 async function ensureTerminalCommandAllowed(command: string): Promise<void> {
 	if (terminalsAllowed) {
@@ -214,9 +197,27 @@ export function registerUiTools(server: McpServer): void {
 			},
 		},
 		async ({ command, args }) => {
-			await ensureUiControlAllowed();
 			const result = await vscode.commands.executeCommand(command, ...(args ?? []));
 			return textResult(result === undefined ? `Ran ${command}.` : truncate(JSON.stringify(result, null, 2) ?? `Ran ${command}.`));
+		},
+	);
+
+	server.registerTool(
+		'ide_chat_new_tab',
+		{
+			description: 'Open a NEW chat tab in the IDE (the current tab and its conversation stay open) for a provider, with model, mode and effort already selected, optionally sending the first message. Prefer this over clicking through the pickers. Returns what was selected; if a name does not match, the result lists the valid providers, pickers and options, so call it again with the right ones.',
+			inputSchema: {
+				provider: z.string().optional().describe('Provider: "Claude Code", "Codex CLI", "Gemini CLI", "OpenCode", "NVIDIA", "OpenRouter" (or the session type, for example "nova-openrouter"). Default: Local, with no provider.'),
+				model: z.string().optional().describe('Model id or name, for example "Sonnet 5" or "openrouter/free". A unique partial name works.'),
+				mode: z.string().optional().describe('Mode / permission mode, for example "Accept edits".'),
+				effort: z.string().optional().describe('Thinking / reasoning effort, when the provider has one.'),
+				options: z.record(z.string(), z.string()).optional().describe('Any other picker, keyed by its id or name.'),
+				prompt: z.string().optional().describe('First message to send in the new tab.'),
+			},
+		},
+		async args => {
+			const result = await vscode.commands.executeCommand('workbench.action.chat.nova.openTab', args);
+			return textResult(truncate(JSON.stringify(result, null, 2) ?? 'Done.'));
 		},
 	);
 
@@ -227,7 +228,6 @@ export function registerUiTools(server: McpServer): void {
 			inputSchema: {},
 		},
 		async () => {
-			await ensureUiControlAllowed();
 			return textResult(await takeSnapshot());
 		},
 	);
@@ -245,7 +245,6 @@ export function registerUiTools(server: McpServer): void {
 			},
 		},
 		async ({ ref, x, y, button, double }) => {
-			await ensureUiControlAllowed();
 			const point = ref !== undefined ? await centerOf(ref) : x !== undefined && y !== undefined ? { x, y } : undefined;
 			if (!point) {
 				throw new Error('Pass either ref or both x and y.');
@@ -266,7 +265,6 @@ export function registerUiTools(server: McpServer): void {
 			},
 		},
 		async ({ text, ref }) => {
-			await ensureUiControlAllowed();
 			if (ref !== undefined) {
 				const point = await centerOf(ref);
 				await click(point.x, point.y, 'left', 1);
@@ -287,7 +285,6 @@ export function registerUiTools(server: McpServer): void {
 			},
 		},
 		async ({ key, modifiers }) => {
-			await ensureUiControlAllowed();
 			await pressKey(key, modifiers ?? []);
 			await settle();
 			return textResult(await takeSnapshot());
@@ -298,7 +295,6 @@ export function registerUiTools(server: McpServer): void {
 		'ide_ui_screenshot',
 		{ description: 'Capture a PNG screenshot of the IDE window, to see what the user sees.', inputSchema: {} },
 		async () => {
-			await ensureUiControlAllowed();
 			const { data } = await cdp<{ data: string }>('Page.captureScreenshot', { format: 'png' });
 			return { content: [{ type: 'image' as const, data, mimeType: 'image/png' }] };
 		},
