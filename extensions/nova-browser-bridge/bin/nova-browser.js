@@ -4,9 +4,9 @@
  *  Talks to the nova-browser-bridge extension's REST surface (/v1/*). Plain Node,
  *  no dependencies, so it works in any integrated terminal without an install step.
  *
- *  Discovery order: NOVA_BROWSER_URL/NOVA_BROWSER_TOKEN env vars (set automatically
- *  in integrated terminals by the extension) falling back to ~/.nova-ide/bridge.json
- *  (for terminals opened before the extension activated, or non-integrated shells).
+ *  Discovery order: NOVA_BROWSER_URL/NOVA_BROWSER_TOKEN env vars (only when set by hand,
+ *  e.g. for a bridge on another machine), otherwise ~/.nova-ide/bridge.json, which the
+ *  extension rewrites on every activation (so the token is never stale in restored terminals).
  *-------------------------------------------------------------------------------------------*/
 
 'use strict';
@@ -106,6 +106,15 @@ async function main() {
 		case '-h':
 		case '--help':
 			printHelp();
+			return;
+
+		case 'token':
+			console.log(conn.token);
+			return;
+
+		// JSON headers for MCP clients that ask a helper program for them (Claude Code: headersHelper).
+		case 'mcp-headers':
+			console.log(JSON.stringify({ Authorization: `Bearer ${conn.token}` }));
 			return;
 
 		case 'pages': {
@@ -254,6 +263,8 @@ Usage:
   nova-browser run <file.js|-> [--page <id>]
   nova-browser dev status
   nova-browser dev restart
+  nova-browser token          print the bridge token (for MCP clients that need it in an env var)
+  nova-browser mcp-headers    print the MCP Authorization header as JSON
 
 Most commands default to the page opened by the last "nova-browser open" in this
 directory (tracked in .nova/state.json). Pass --page <id> to target another one.`);

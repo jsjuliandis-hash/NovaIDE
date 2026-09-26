@@ -52,7 +52,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	await writeBridgeFile({ url: restBaseUrl, token, pid: process.pid, cdpUrl: cdp.endpointUrl });
 	context.subscriptions.push({ dispose: () => void removeBridgeFile() });
 
-	exposeToIntegratedTerminals(context, mcpUrl, restBaseUrl, token, cdp.endpointUrl);
+	exposeToIntegratedTerminals(context);
 
 	const statusBarItem = createStatusBarItem(bridge, onAgentRequest.event);
 	context.subscriptions.push(statusBarItem);
@@ -81,17 +81,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 }
 
 /**
- * Makes `NOVA_BROWSER_URL`/`NOVA_BROWSER_TOKEN` and the `nova-browser` CLI
- * available in every integrated terminal opened from now on. VS Code does not
- * retroactively apply these to already-open terminals.
+ * Puts the `nova-browser` CLI on the PATH of every integrated terminal opened from now on. VS Code
+ * does not retroactively apply this to already-open terminals.
+ *
+ * The URLs and the token are deliberately NOT exported as environment variables: the token is
+ * new on every activation, so terminals restored after a reload would be launched with a stale
+ * environment and VS Code would flag them with "relaunch the terminal". The CLI reads them from
+ * ~/.nova-ide/bridge.json instead, which is rewritten on every activation.
  */
-function exposeToIntegratedTerminals(context: vscode.ExtensionContext, mcpUrl: string, restBaseUrl: string, token: string, cdpUrl: string): void {
+function exposeToIntegratedTerminals(context: vscode.ExtensionContext): void {
 	const env = context.environmentVariableCollection;
 	env.clear();
-	env.replace('NOVA_BROWSER_URL', restBaseUrl);
-	env.replace('NOVA_BROWSER_MCP_URL', mcpUrl);
-	env.replace('NOVA_BROWSER_TOKEN', token);
-	env.replace('NOVA_BROWSER_CDP_URL', cdpUrl);
 	env.prepend('PATH', `${path.join(context.extensionUri.fsPath, 'bin')}${path.delimiter}`);
 }
 
@@ -229,10 +229,11 @@ async function configureCliAgents(mcpUrl: string): Promise<void> {
 		if (target.id === 'claude') {
 			await mergeJsonFile(vscode.Uri.joinPath(folder.uri, '.mcp.json'), (json) => {
 				const mcpServers = (json.mcpServers ??= {}) as Record<string, unknown>;
+				// The token changes on every activation and is not in the terminal environment, so Claude Code asks the CLI for it.
 				mcpServers['nova-browser'] = {
 					type: 'http',
 					url: mcpUrl,
-					headers: { Authorization: 'Bearer ${NOVA_BROWSER_TOKEN}' },
+					headersHelper: `node "${path.join(vscode.extensions.getExtension('nova-ide.nova-browser-bridge')?.extensionPath ?? '', 'bin', 'nova-browser.js')}" mcp-headers`,
 				};
 			});
 		} else if (target.id === 'gemini') {
@@ -249,7 +250,7 @@ async function configureCliAgents(mcpUrl: string): Promise<void> {
 				`url = "${mcpUrl}"`,
 				'bearer_token_env_var = "NOVA_BROWSER_TOKEN"',
 			].join('\n');
-			const doc = await vscode.workspace.openTextDocument({ language: 'toml', content: `# ${vscode.l10n.t('Add this to ~/.codex/config.toml')}\n\n${snippet}\n` });
+			const doc = await vscode.workspace.openTextDocument({ language: 'toml', content: `# ${vscode.l10n.t('Add this to ~/.codex/config.toml')}\n# ${vscode.l10n.t('NOVA_BROWSER_TOKEN is not set in the terminals anymore: before starting Codex, run it with the output of "nova-browser token".')}\n\n${snippet}\n` });
 			await vscode.window.showTextDocument(doc, { preview: false });
 		}
 	}

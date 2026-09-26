@@ -56,7 +56,7 @@ Fallback, only if `ide_chat_new_tab` is unavailable: `ide_run_command` with `wor
 
 ## Terminals and CLI
 
-- Integrated terminals already have `NOVA_BROWSER_URL`, `NOVA_BROWSER_MCP_URL`, `NOVA_BROWSER_TOKEN`, `NOVA_BROWSER_CDP_URL` and the `nova-browser` command (`nova-browser pages`, `snapshot`, `screenshot -o file.png`, `click`, `wait-reload`) on the `PATH`.
+- Integrated terminals have the `nova-browser` command on the `PATH` (`nova-browser pages`, `snapshot`, `screenshot -o file.png`, `click`, `wait-reload`). It finds the running bridge by itself (from `~/.nova-ide/bridge.json`); there are no `NOVA_BROWSER_*` environment variables anymore. `nova-browser token` prints the bridge token if a tool needs it.
 - Do not start a second dev server if `devserver_status` says one is running.
 
 ## The Chat panel
