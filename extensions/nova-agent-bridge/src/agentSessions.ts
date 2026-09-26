@@ -11,7 +11,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { Gateway, GatewayId, GATEWAYS } from './gateways';
 import { vendorIcon } from './vendors';
-import { AcpAuthMethod, AcpAvailableCommand, AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
+import { AcpAuthMethod, AcpAvailableCommand, AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPermissionOption, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
 
 /**
  * Static description of an ACP agent. The chat session `type` must match a `chatSessions`
@@ -47,6 +47,11 @@ const PICKER_SLOTS: readonly { readonly category: string; readonly ids: readonly
 	{ category: 'mode', ids: ['mode'] },
 	{ category: 'thought_level', ids: ['effort', 'reasoning_effort'] },
 ];
+
+/** Permission modes (Claude Code, Codex, Gemini) that approve every tool call, and those that approve reading and editing files. */
+const FULL_ACCESS_MODES: ReadonlySet<string> = new Set(['bypassPermissions', 'agent-full-access', 'full-access', 'yolo']);
+const EDIT_MODES: ReadonlySet<string> = new Set(['acceptEdits', 'agent', 'autoEdit']);
+const EDIT_KINDS: ReadonlySet<string> = new Set(['read', 'search', 'edit']);
 
 /** Option ids used for agents that report models/modes outside of config options. */
 const LEGACY_MODEL_ID = 'acp.model';
@@ -469,6 +474,9 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 					for (const location of update.locations ?? []) {
 						editedFiles.add(location.path);
 					}
+				} else if (update.status === 'failed' && typeof update.rawOutput === 'string' && update.rawOutput.includes('<tool_use_error>')) {
+					// NOVA: the agent rejected the call itself (e.g. "File has not been read yet") and the model fixes it and retries, so it is not a failure to show the user.
+					this.log.info(`[${this.agent.label}] tool call rejected by the agent, not shown: ${update.rawOutput.replace(/\s+/g, ' ').slice(0, 200)}`);
 				} else if (update.status === 'failed') {
 					// NOVA: a failed shell command would dump the whole command line into the chat.
 						stream.markdown('\n\n> ' + (FILE_TOOL_KINDS.has(kind ?? '') ? vscode.l10n.t('Tool failed: {0}', title) : vscode.l10n.t('A tool call failed.')) + '\n\n');
@@ -642,9 +650,37 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 
 	// --- agent → client requests ---------------------------------------------------------------
 
+	/** The "allow once" (or else "allow always") option to answer with when the mode picked for the session already approves this kind of tool call. */
+	private autoApprove(acpSessionId: string, kind: string | undefined, title: string | undefined, options: readonly AcpPermissionOption[]): AcpPermissionOption | undefined {
+		// The tools of the Nova IDE MCP server (ide_ui_*, ide_terminal_*, browser_*...) ask the user themselves when it matters, so asking here too doubles every dialog.
+		if (title && /nova-browser/.test(title)) {
+			return options.find(o => o.kind === 'allow_once') ?? options.find(o => o.kind === 'allow_always');
+		}
+		let mode: string | undefined;
+		for (const state of this.sessions.values()) {
+			if (state.acpSessionId === acpSessionId) {
+				mode = state.appliedOptions.get('mode') ?? state.appliedOptions.get(LEGACY_MODE_ID);
+			}
+		}
+		const approvesAll = mode !== undefined && FULL_ACCESS_MODES.has(mode);
+		const approvesEdits = mode !== undefined && EDIT_MODES.has(mode);
+		// Agents without a permission mode (OpenCode) only ask about paths outside the project, which the user opens on purpose.
+		const noModeAgent = mode === 'build';
+		if (!approvesAll && !((approvesEdits || noModeAgent) && kind !== undefined && EDIT_KINDS.has(kind))) {
+			return undefined;
+		}
+		return options.find(o => o.kind === 'allow_once') ?? options.find(o => o.kind === 'allow_always');
+	}
+
 	private createHandlers(): AcpRequestHandlers {
 		return {
-			requestPermission: async ({ toolCall, options }) => {
+			requestPermission: async ({ sessionId, toolCall, options }) => {
+				// NOVA: the agents only auto-approve inside the folder they were started in, so a mode such as
+				// "Accept edits" still asked for every file elsewhere; honor the mode the user picked here instead.
+				const auto = this.autoApprove(sessionId, toolCall.kind, toolCall.title, options);
+				if (auto) {
+					return { outcome: { outcome: 'selected', optionId: auto.optionId } };
+				}
 				const title = toolCall.title ?? toolCall.kind ?? '';
 				const target = toolCall.locations?.[0]?.path;
 				const detail = target ? vscode.workspace.asRelativePath(target) : undefined;

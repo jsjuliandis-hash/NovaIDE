@@ -60,6 +60,8 @@ export interface AcpSessionUpdate {
 	readonly title?: string;
 	readonly kind?: string;
 	readonly status?: string;
+	/** Raw tool result; on a failed Claude Code tool it is a `<tool_use_error>` message. */
+	readonly rawOutput?: unknown;
 	readonly locations?: readonly { readonly path: string; readonly line?: number }[];
 	readonly entries?: readonly { readonly content: string; readonly status: string }[];
 	readonly configOptions?: readonly AcpConfigOption[];
