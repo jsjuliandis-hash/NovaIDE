@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Codicon } from '../../../../../base/common/codicons.js';
 import { Disposable, DisposableMap, DisposableStore } from '../../../../../base/common/lifecycle.js';
 import { localize } from '../../../../../nls.js';
 import { IInstantiationService } from '../../../../../platform/instantiation/common/instantiation.js';
@@ -28,6 +27,7 @@ import { ReadBrowserTool, ReadBrowserToolData } from './readBrowserTool.js';
 import { RunPlaywrightCodeTool, RunPlaywrightCodeToolData } from './runPlaywrightCodeTool.js';
 import { ScreenshotBrowserTool, ScreenshotBrowserToolData } from './screenshotBrowserTool.js';
 import { TypeBrowserTool, TypeBrowserToolData } from './typeBrowserTool.js';
+import { novaBrowserIcon } from '../../../../common/novaBrowserIcon.js'; // NOVA
 
 
 class BrowserChatAgentToolsContribution extends Disposable implements IWorkbenchContribution {
@@ -56,7 +56,7 @@ class BrowserChatAgentToolsContribution extends Disposable implements IWorkbench
 			'browser',
 			'browser',
 			{
-				icon: Codicon.globe,
+				icon: novaBrowserIcon, // NOVA
 				description: localize('browserToolSet.description', 'Open and interact with integrated browser pages'),
 				deprecated: true
 			},

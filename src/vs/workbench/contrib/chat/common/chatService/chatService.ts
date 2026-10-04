@@ -187,6 +187,9 @@ export interface IChatUsage {
 	outputBuffer?: number;
 	/** NOVA: context window of the model that served the request, when the model is not one the IDE knows (agents). */
 	contextWindow?: number;
+	/** NOVA: tokens the conversation has processed so far, as the agent counts them (see `processedTokensApproximate`). */
+	processedTokens?: number;
+	processedTokensApproximate?: boolean;
 	promptTokenDetails?: readonly IChatUsagePromptTokenDetail[];
 	/**
 	 * The Copilot credit cost of whatever this usage describes — a turn's own

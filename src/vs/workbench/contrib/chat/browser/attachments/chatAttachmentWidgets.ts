@@ -81,6 +81,7 @@ import { IChatResponseResourceFileSystemProvider } from '../../common/widget/cha
 import { IChatContextService } from '../contextContrib/chatContextService.js';
 import { IChatImageCarouselService } from '../chatImageCarouselService.js';
 import { CHAT_IMAGE_HOVER_THUMBNAIL_MAX_SIZE, getOrCreateImageThumbnail } from '../chatImageUtils.js';
+import { novaBrowserIcon } from '../../../../common/novaBrowserIcon.js'; // NOVA
 
 const commonHoverOptions: Partial<IHoverOptions> = {
 	style: HoverStyle.Pointer,
@@ -1953,7 +1954,7 @@ export class BrowserViewAttachmentWidget extends AbstractChatAttachmentWidget {
 
 		this.element.classList.toggle('warning', !isAvailable);
 		this.label.setLabel(name, undefined, {
-			iconPath: Codicon.globe,
+			iconPath: novaBrowserIcon, // NOVA
 			strikethrough: !isAvailable,
 		});
 		this.element.ariaLabel = this.appendDeletionHint(

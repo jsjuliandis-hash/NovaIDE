@@ -533,6 +533,8 @@ export class MainThreadChatAgents2 extends Disposable implements MainThreadChatA
 						completionTokens: progress.completionTokens,
 						outputBuffer: progress.outputBuffer,
 						contextWindow: progress.contextWindow,
+						processedTokens: progress.processedTokens, // NOVA
+						processedTokensApproximate: progress.processedTokensApproximate, // NOVA
 						copilotCredits: progress.copilotCredits,
 						promptTokenDetails: progress.promptTokenDetails
 					});
@@ -543,6 +545,8 @@ export class MainThreadChatAgents2 extends Disposable implements MainThreadChatA
 						completionTokens: progress.completionTokens,
 						outputBuffer: progress.outputBuffer,
 						contextWindow: progress.contextWindow,
+						processedTokens: progress.processedTokens, // NOVA
+						processedTokensApproximate: progress.processedTokensApproximate, // NOVA
 						copilotCredits: progress.copilotCredits,
 						promptTokenDetails: progress.promptTokenDetails
 					});

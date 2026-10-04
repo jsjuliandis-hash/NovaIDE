@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Codicon } from '../../../../base/common/codicons.js';
 import { basename, isEqual } from '../../../../base/common/resources.js';
 import { truncate } from '../../../../base/common/strings.js';
 import { ThemeIcon } from '../../../../base/common/themables.js';
@@ -25,6 +24,7 @@ import { LRUCachedFunction } from '../../../../base/common/cache.js';
 import { Disposable, DisposableStore, IDisposable } from '../../../../base/common/lifecycle.js';
 import { Emitter, Event } from '../../../../base/common/event.js';
 import { isBrowserViewAssociatedResourceNavigation } from '../../../../platform/browserView/common/browserView.js';
+import { novaBrowserIcon } from '../../../common/novaBrowserIcon.js'; // NOVA
 
 const LOADING_SPINNER_SVG = (color: string | undefined) => `
 	<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16">
@@ -225,7 +225,7 @@ export class BrowserEditorInput extends EditorInput {
 	}
 
 	override getIcon(): ThemeIcon | URI | undefined {
-		const defaultIcon = this._associatedResource ? undefined : Codicon.globe;
+		const defaultIcon = this._associatedResource ? undefined : novaBrowserIcon; // NOVA
 
 		if (this._model) {
 			if (this._model.loading) {

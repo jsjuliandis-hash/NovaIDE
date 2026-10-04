@@ -24,6 +24,7 @@ import { ISessionChangesService } from '../../changes/browser/sessionChangesServ
 import { ISessionsService } from '../../../services/sessions/browser/sessionsService.js';
 import { EmptyFileEditorInput } from './emptyFileEditorInput.js';
 import { Menus } from '../../../browser/menus.js';
+import { novaBrowserIcon } from '../../../../workbench/common/novaBrowserIcon.js'; // NOVA
 
 export const NEW_BROWSER_TAB_COMMAND_ID = 'workbench.action.agentSessions.newBrowserTab';
 export const NEW_SEARCH_TAB_COMMAND_ID = 'workbench.action.agentSessions.newSearchTab';
@@ -100,7 +101,7 @@ export class NewBrowserTabAction extends Action2 {
 			id: NEW_BROWSER_TAB_COMMAND_ID,
 			title: localize2('newBrowserTab', "Browser"),
 			category: SessionsCategories.Sessions,
-			icon: Codicon.globe,
+			icon: novaBrowserIcon, // NOVA
 			f1: true,
 			precondition: addTabActionWhen,
 			keybinding: {

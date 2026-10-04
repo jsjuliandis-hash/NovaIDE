@@ -47,6 +47,7 @@ import { disposableTimeout } from '../../../../../base/common/async.js';
 import { MarkdownString } from '../../../../../base/common/htmlContent.js';
 import { IsSessionsWindowContext, ResourceContextKey } from '../../../../common/contextkeys.js';
 import { Schemas } from '../../../../../base/common/network.js';
+import { novaBrowserIcon } from '../../../../common/novaBrowserIcon.js'; // NOVA
 
 const CONTEXT_BROWSER_EDITOR_OPEN = new RawContextKey<boolean>('browserEditorOpen', false, localize('browser.editorOpen', "Whether any browser editor is currently open"));
 
@@ -239,7 +240,7 @@ class QuickOpenBrowserAction extends Action2 {
 		super({
 			id: BrowserViewCommandId.QuickOpen,
 			title: localize2('browser.quickOpenAction', "Quick Open Browser Tab..."),
-			icon: Codicon.globe,
+			icon: novaBrowserIcon, // NOVA
 			category: BrowserActionCategory,
 			f1: true,
 			keybinding: {
@@ -276,7 +277,7 @@ class OpenIntegratedBrowserAction extends Action2 {
 			id: BrowserViewCommandId.Open,
 			title: localize2('browser.openAction', "Open Integrated Browser"),
 			category: BrowserActionCategory,
-			icon: Codicon.globe,
+			icon: novaBrowserIcon, // NOVA
 			f1: true,
 		});
 	}
@@ -348,7 +349,7 @@ class OpenFileInIntegratedBrowserAction extends Action2 {
 			id: BrowserViewCommandId.OpenFile,
 			title: localize2('browser.openFileAction', "Open in Integrated Browser"),
 			category: BrowserActionCategory,
-			icon: Codicon.globe,
+			icon: novaBrowserIcon, // NOVA
 			f1: true,
 			precondition: IS_SUPPORTED_LOCAL_BROWSER_FILE,
 			menu: [
@@ -479,7 +480,7 @@ class OpenOrListBrowsersAction extends Action2 {
 		super({
 			id: BrowserViewCommandId.OpenOrList,
 			title: localize2('browser.openOrListAction', "Browser"),
-			icon: Codicon.globe,
+			icon: novaBrowserIcon, // NOVA
 			f1: false,
 			keybinding: {
 				weight: KeybindingWeight.WorkbenchContrib,

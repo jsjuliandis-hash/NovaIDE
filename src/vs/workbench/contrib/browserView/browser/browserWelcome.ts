@@ -6,7 +6,7 @@
 import './media/browserWelcome.css';
 import { $ } from '../../../../base/browser/dom.js';
 import { renderIcon } from '../../../../base/browser/ui/iconLabel/iconLabels.js';
-import { Codicon } from '../../../../base/common/codicons.js';
+import { novaBrowserIcon } from '../../../common/novaBrowserIcon.js'; // NOVA
 
 /**
  * Creates the browser editor's welcome content.
@@ -16,7 +16,7 @@ export function createBrowserWelcome(title: string, subtitle: string): HTMLEleme
 	const content = $('.browser-welcome-content');
 
 	const iconContainer = $('.browser-welcome-icon');
-	iconContainer.appendChild(renderIcon(Codicon.globe));
+	iconContainer.appendChild(renderIcon(novaBrowserIcon));
 	content.appendChild(iconContainer);
 
 	const titleElement = $('h2.browser-welcome-title');

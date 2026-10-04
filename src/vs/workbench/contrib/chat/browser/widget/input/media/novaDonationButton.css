@@ -4,8 +4,37 @@
 
 .interactive-session .nova-donation-row {
 	display: flex;
+	align-items: center;
 	justify-content: flex-end;
 	padding: 0 2px 4px;
+}
+
+/* Integrated Browser: the logo's yellow bolt in a ring, the size of the input toolbar buttons, pushed to the left. */
+.interactive-session .nova-browser-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	margin-right: auto;
+	border-radius: 50%;
+	cursor: pointer;
+	text-decoration: none;
+	transition: background-color 0.15s ease, filter 0.15s ease;
+}
+
+.interactive-session .nova-browser-button .codicon {
+	font-size: 18px;
+}
+
+.interactive-session .nova-browser-button:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	filter: brightness(1.15) drop-shadow(0 0 3px rgba(240, 196, 60, 0.45));
+}
+
+.interactive-session .nova-browser-button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
 }
 
 .interactive-session .nova-donation-button {

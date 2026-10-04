@@ -57,7 +57,7 @@ import { SuggestController } from '../../../../../../editor/contrib/suggest/brow
 import { localize } from '../../../../../../nls.js';
 import { ICommandService } from '../../../../../../platform/commands/common/commands.js'; // NOVA
 import { IHoverService } from '../../../../../../platform/hover/browser/hover.js'; // NOVA
-import { renderNovaDonationButton } from './novaDonationButton.js'; // NOVA
+import { renderNovaInputRow } from './novaDonationButton.js'; // NOVA
 import { IAccessibilityService } from '../../../../../../platform/accessibility/common/accessibility.js';
 import { MenuWorkbenchButtonBar } from '../../../../../../platform/actions/browser/buttonbar.js';
 import { IActionViewItemService, type IActionViewItemFactory } from '../../../../../../platform/actions/browser/actionViewItemService.js';
@@ -3315,10 +3315,10 @@ export class ChatInputPart extends Disposable implements IHistoryNavigationWidge
 		ChatContextKeys.inChatInput.bindTo(archiveNudgeContextKeyService).set(true);
 
 		this.followupsContainer = elements.followupsContainer;
-		// NOVA: "Donation" button above the input of the Chat view
+		// NOVA: Integrated Browser and "Donation" buttons above the input of the Chat view
 		const novaDonationContainer = (elements as { novaDonationContainer?: HTMLElement }).novaDonationContainer; // only in the regular layout
 		if (novaDonationContainer && this.location === ChatAgentLocation.Chat && this.options.widgetViewKindTag === 'view') {
-			this._register(renderNovaDonationButton(novaDonationContainer, this.novaCommandService, this.novaHoverService));
+			this._register(renderNovaInputRow(novaDonationContainer, this.novaCommandService, this.novaHoverService));
 		}
 		const inputAndSideToolbar = elements.inputAndSideToolbar; // The chat input and toolbar to the right
 		this.inputAndSideToolbar = inputAndSideToolbar;

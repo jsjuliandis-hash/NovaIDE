@@ -63,6 +63,8 @@ export function isSameContextUsageData(a: IChatContextUsageData | undefined, b: 
 		&& a.percentage === b.percentage
 		&& a.outputBufferPercentage === b.outputBufferPercentage
 		&& a.sessionCost === b.sessionCost
+		&& a.processedTokens === b.processedTokens // NOVA
+		&& a.processedTokensApproximate === b.processedTokensApproximate // NOVA
 		&& equals(a.promptTokenDetails, b.promptTokenDetails, (x, y) =>
 			x.category === y.category && x.label === y.label && x.percentageOfPrompt === y.percentageOfPrompt);
 }
@@ -441,6 +443,7 @@ export class ChatContextUsageWidget extends Disposable {
 			usedTokens, completionTokens, totalContextWindow,
 			percentage, outputBufferPercentage,
 			promptTokenDetails, sessionCost: response.session.sessionCost,
+			processedTokens: usage.processedTokens, processedTokensApproximate: usage.processedTokensApproximate, // NOVA
 		});
 		this.show();
 	}

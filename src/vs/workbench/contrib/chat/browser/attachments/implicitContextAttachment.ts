@@ -40,6 +40,7 @@ import { IChatContextService } from '../contextContrib/chatContextService.js';
 import { ChatImplicitContext, ChatImplicitContexts } from './chatImplicitContext.js';
 import { IBrowserViewWorkbenchService } from '../../../browserView/common/browserView.js';
 import { BrowserViewUri } from '../../../../../platform/browserView/common/browserViewUri.js';
+import { novaBrowserIcon } from '../../../../common/novaBrowserIcon.js'; // NOVA
 
 export function isImplicitContextAlreadyAttached(attachments: readonly IChatRequestVariableEntry[], targetUri: URI | undefined, targetRange: IRange | undefined, targetHandle: number | undefined): boolean {
 	return attachments.some(attachment => {
@@ -296,7 +297,7 @@ export class ImplicitContextAttachmentWidget extends Disposable {
 		}
 
 		const update = () => {
-			label.setLabel(input.getName(), undefined, { iconPath: Codicon.globe });
+			label.setLabel(input.getName(), undefined, { iconPath: novaBrowserIcon }); // NOVA
 			contextNode.ariaLabel = localize('chat.implicitBrowserContext', "Suggested browser context, {0}", input.getName());
 		};
 		update();

@@ -3,7 +3,6 @@
  *  Licensed under the MIT License. See License.txt in the project root for license information.
  *--------------------------------------------------------------------------------------------*/
 
-import { Codicon } from '../../../../base/common/codicons.js';
 import { Disposable, DisposableStore, MutableDisposable } from '../../../../base/common/lifecycle.js';
 import { derived, derivedOpts, IObservable, IReader, observableSignal, observableValue } from '../../../../base/common/observable.js';
 import { isEqual } from '../../../../base/common/resources.js';
@@ -15,6 +14,7 @@ import { IEditorService } from '../../../../workbench/services/editor/common/edi
 import { ChatOriginKind, IChat } from '../../../services/sessions/common/session.js';
 import { IActiveSession } from '../../../services/sessions/common/sessionsManagement.js';
 import type { ISessionChatPillsDebugData } from './sessionChatInputToolbarDebug.js';
+import { novaBrowserIcon } from '../../../../workbench/common/novaBrowserIcon.js'; // NOVA
 
 const NO_URLS: ReadonlySet<string> = new Set();
 
@@ -129,7 +129,7 @@ export class SessionBrowsersControl extends Disposable {
 		return {
 			id: input?.id ?? label,
 			label,
-			icon: Codicon.globe,
+			icon: novaBrowserIcon, // NOVA
 			open: () => { void this._openBrowser(input, chat); },
 		};
 	}

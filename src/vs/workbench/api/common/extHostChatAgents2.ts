@@ -481,6 +481,8 @@ export class ChatAgentResponseStream {
 						completionTokens: usage.completionTokens,
 						outputBuffer: usage.outputBuffer,
 						contextWindow: usage.contextWindow,
+						processedTokens: usage.processedTokens, // NOVA
+						processedTokensApproximate: usage.processedTokensApproximate, // NOVA
 						copilotCredits: usage.copilotCredits,
 						promptTokenDetails: usage.promptTokenDetails
 					};

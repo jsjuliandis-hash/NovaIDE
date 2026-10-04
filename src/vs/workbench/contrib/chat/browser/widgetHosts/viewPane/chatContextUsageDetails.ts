@@ -35,6 +35,9 @@ export interface IChatContextUsageData {
 	outputBufferPercentage?: number;
 	promptTokenDetails?: readonly IChatContextUsagePromptTokenDetail[];
 	sessionCost?: number;
+	/** NOVA: tokens the conversation has processed so far (agents), and whether that is an estimate. */
+	processedTokens?: number;
+	processedTokensApproximate?: boolean;
 }
 
 /**
@@ -47,6 +50,8 @@ export class ChatContextUsageDetails extends Disposable {
 
 	private readonly sessionCostSection: HTMLElement;
 	private readonly sessionCostValue: HTMLElement;
+	private readonly processedSection: HTMLElement; // NOVA
+	private readonly processedValue: HTMLElement; // NOVA
 	private readonly quotaItem: HTMLElement;
 	private readonly percentageLabel: HTMLElement;
 	private readonly tokenCountLabel: HTMLElement;
@@ -79,6 +84,14 @@ export class ChatContextUsageDetails extends Disposable {
 		const sessionCostLabel = sessionCostRow.appendChild($('span.session-cost-label'));
 		sessionCostLabel.textContent = localize('sessionCost', "Session Cost");
 		this.sessionCostValue = sessionCostRow.appendChild($('span.session-cost-value'));
+
+		// NOVA: tokens the conversation has processed so far (hidden until an agent reports it)
+		this.processedSection = this.domNode.appendChild($('.session-cost-section'));
+		this.processedSection.style.display = 'none';
+		const processedRow = this.processedSection.appendChild($('.session-cost-row'));
+		const processedLabel = processedRow.appendChild($('span.session-cost-label'));
+		processedLabel.textContent = localize('nova.processedTokens', "Processed in Conversation");
+		this.processedValue = processedRow.appendChild($('span.session-cost-value'));
 
 		// Quota indicator — using same structure as ChatStatusDashboard
 		this.quotaItem = this.domNode.appendChild($('.quota-indicator'));
@@ -163,7 +176,16 @@ export class ChatContextUsageDetails extends Disposable {
 	}
 
 	private _render(data: IChatContextUsageData): void {
-		const { percentage, usedTokens, totalContextWindow, outputBufferPercentage, promptTokenDetails, sessionCost } = data;
+		const { percentage, usedTokens, totalContextWindow, outputBufferPercentage, promptTokenDetails, sessionCost, processedTokens, processedTokensApproximate } = data;
+
+		// NOVA: tokens the conversation has processed so far, as the agent counts them
+		if (typeof processedTokens === 'number' && processedTokens > 0) {
+			const value = localize('nova.processedTokensValue', "{0} tokens", this.formatTokenCount(processedTokens, 1));
+			this.processedValue.textContent = processedTokensApproximate ? `≈ ${value}` : value;
+			this.processedSection.style.display = '';
+		} else {
+			this.processedSection.style.display = 'none';
+		}
 
 		// Update session cost — hide section when no cost data is available
 		if (typeof sessionCost === 'number' && sessionCost > 0) {

@@ -1762,6 +1762,8 @@ export class ChatResponseModel extends Disposable implements IChatResponseModel 
 			&& currentUsage.completionTokens === usage.completionTokens
 			&& currentUsage.outputBuffer === usage.outputBuffer
 			&& currentUsage.contextWindow === usage.contextWindow
+			&& currentUsage.processedTokens === usage.processedTokens // NOVA
+			&& currentUsage.processedTokensApproximate === usage.processedTokensApproximate // NOVA
 			&& currentUsage.copilotCredits === usage.copilotCredits
 			&& currentUsage.sessionCopilotCredits === usage.sessionCopilotCredits
 			&& equals(currentUsage.promptTokenDetails, usage.promptTokenDetails)
@@ -1901,6 +1903,8 @@ export class ChatResponseModel extends Disposable implements IChatResponseModel 
 			completionTokens: this.completionTokenCount,
 			outputBuffer: this.usage?.outputBuffer,
 			contextWindow: this.usage?.contextWindow,
+			processedTokens: this.usage?.processedTokens, // NOVA
+			processedTokensApproximate: this.usage?.processedTokensApproximate, // NOVA
 			promptTokenDetails: this.usage?.promptTokenDetails,
 			copilotCredits: this.usage?.copilotCredits,
 			modelTotals: this.usage?.modelTotals,
@@ -2008,6 +2012,8 @@ interface ISerializableChatResponseData {
 	completionTokens?: number;
 	outputBuffer?: number;
 	contextWindow?: number;
+	processedTokens?: number; // NOVA
+	processedTokensApproximate?: boolean; // NOVA
 	promptTokenDetails?: readonly IChatUsagePromptTokenDetail[];
 	copilotCredits?: number;
 	modelTotals?: readonly IChatUsageModelTotal[];
@@ -3139,6 +3145,8 @@ export class ChatModel extends Disposable implements IChatModel {
 					completionTokens: raw.completionTokens ?? 0,
 					outputBuffer: raw.outputBuffer,
 					contextWindow: raw.contextWindow,
+					processedTokens: raw.processedTokens, // NOVA
+					processedTokensApproximate: raw.processedTokensApproximate, // NOVA
 					promptTokenDetails: raw.promptTokenDetails,
 					copilotCredits: raw.copilotCredits,
 					modelTotals: raw.modelTotals,

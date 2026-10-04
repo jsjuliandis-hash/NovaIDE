@@ -151,9 +151,18 @@ export const novaTranslations: Readonly<Record<string, Readonly<Record<string, R
 			'nova.tts.autoSpeakOn': 'As respostas deste chat agora são lidas em voz alta automaticamente.',
 			'nova.tts.autoSpeakOff': 'As respostas deste chat não são mais lidas em voz alta automaticamente.',
 		},
+		'vs/workbench/common/novaBrowserIcon': {
+			'nova.browserIcon': 'Ícone do Navegador Integrado.',
+		},
+		'vs/workbench/contrib/chat/browser/widgetHosts/viewPane/chatContextUsageDetails': {
+			'nova.processedTokens': 'Processado na Conversa',
+			'nova.processedTokensValue': '{0} tokens',
+		},
 		'vs/workbench/contrib/chat/browser/widget/input/novaDonationButton': {
 			'nova.donation.button': 'Doação',
 			'nova.donation.buttonHover': 'Apoie a Nova IDE com uma doação via Pix',
+			'nova.browserButton.label': 'Abrir o Navegador Integrado',
+			'nova.browserButton.hover': 'Abrir o Navegador Integrado',
 		},
 		'vs/platform/novaDonation/electron-main/novaDonationMainService': {
 			'nova.donation.title': 'Apoie a Nova IDE',

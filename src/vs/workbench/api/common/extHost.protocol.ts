@@ -2786,6 +2786,8 @@ export interface IChatUsageDto {
 	completionTokens: number;
 	outputBuffer?: number;
 	contextWindow?: number;
+	processedTokens?: number; // NOVA
+	processedTokensApproximate?: boolean; // NOVA
 	copilotCredits?: number;
 	promptTokenDetails?: readonly { category: string; label: string; percentageOfPrompt: number }[];
 }

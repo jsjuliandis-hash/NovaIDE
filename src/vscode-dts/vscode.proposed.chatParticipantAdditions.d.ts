@@ -882,6 +882,17 @@ declare module 'vscode' {
 		readonly contextWindow?: number;
 
 		/**
+		 * NOVA: tokens the whole conversation has processed so far (every model call re-reads the context), shown
+		 * next to the context window. Agents count it from what they report, so it can be an estimate.
+		 */
+		readonly processedTokens?: number;
+
+		/**
+		 * NOVA: true when {@link processedTokens} is an estimate or misses some requests.
+		 */
+		readonly processedTokensApproximate?: boolean;
+
+		/**
 		 * The number of copilot credits consumed by this request.
 		 */
 		readonly copilotCredits?: number;

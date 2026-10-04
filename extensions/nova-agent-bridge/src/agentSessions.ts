@@ -13,6 +13,7 @@ import { Gateway, GatewayId, GATEWAYS } from './gateways';
 import { vendorIcon } from './vendors';
 import { AcpAuthMethod, AcpAvailableCommand, AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPermissionOption, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
 import { ConversationContext, decideAutoCompact, formatTokenCount, modelsUsed, requestProcessedTokens, UsageSemantics } from './contextAccounting';
+import { AcpToolContentItem, diffText, inlineCode, shortText, toolOutputText } from './activityLog';
 import { buildSummaryRequest, clampSummaryChars, cleanSummary, DEFAULT_SUMMARY_CHARS, NOVA_COMPACT_COMMAND, parseCompactCommand, summaryDocument, wrapSummary } from './novaCompact';
 import { formatMetrics, RecentMetrics, RequestKind, RequestMetrics } from './requestMetrics';
 
@@ -64,6 +65,15 @@ interface PromptRun {
 	readonly text: string;
 }
 
+/** What the activity panel of one answer has shown so far. */
+interface RunActivity {
+	readonly runId: string;
+	readonly toolCalls: Map<string, { title: string; kind?: string; shown: boolean; done: boolean; diff?: string }>;
+	/** Bumped when the agent writes text, so the next stretch of reasoning opens a new panel section. */
+	thoughtSegment: number;
+	planPending: number | undefined;
+}
+
 /** How many Nova compact summaries are kept on disk. */
 const KEPT_SUMMARIES = 50;
 
@@ -85,9 +95,6 @@ const LEGACY_MODE_ID = 'acp.mode';
 
 /** Environment variable an agent reads for each API key provider ACP reports in `authMethods[]._meta['api-key'].provider`. */
 const API_KEY_ENV: Record<string, string> = { openai: 'OPENAI_API_KEY', google: 'GEMINI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
-
-/** Tool kinds whose title is a file path, safe to show in the chat when a call fails; every other kind may carry raw command output. */
-const FILE_TOOL_KINDS = new Set(['read', 'edit', 'delete', 'move', 'search']);
 
 export class AgentSessionProvider implements vscode.ChatSessionContentProvider, vscode.Disposable {
 
@@ -467,13 +474,12 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		const acpSessionId = state.acpSessionId!;
 		const startedAt = Date.now();
 		let firstUpdateAt: number | undefined;
-		const toolCalls = new Map<string, { title: string; kind?: string }>();
 		const editedFiles = new Set<string>();
-		let thinking = false;
 		let text = '';
 		const lastMessage = { id: undefined as string | undefined };
 		// NOVA: one collector per request, fed only by this session's updates, so chat tabs running at the same time never mix.
 		const metrics = new RequestMetrics(randomId(), this.agent.label, acpSessionId, Date.now, options.kind);
+		const activity: RunActivity = { runId: randomId(), toolCalls: new Map(), thoughtSegment: 0, planPending: undefined };
 		metrics.recordPrompt(options.shape);
 
 		const listener = connection.onDidUpdate(({ sessionId, update }) => {
@@ -486,7 +492,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				this.log.info(`[${this.agent.label}] usage: context ${update.used ?? '?'} of ${update.size ?? '?'} tokens${update.cost ? `, cost ${update.cost.amount} ${update.cost.currency}` : ''}`);
 				if (options.render && update.used !== undefined && update.size) {
 					// NOVA: feeds the context usage donut of the chat input (used tokens out of the model's context window).
-					stream.usage({ promptTokens: update.used, completionTokens: 0, contextWindow: update.size });
+					stream.usage({ promptTokens: update.used, completionTokens: 0, contextWindow: update.size, ...processedUsage(state.conversation) });
 				}
 			}
 			if (!options.render) {
@@ -501,12 +507,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				}
 				return;
 			}
-			this.renderUpdate(update, stream, toolCalls, editedFiles, lastMessage, () => {
-				if (!thinking) {
-					thinking = true;
-					stream.progress(vscode.l10n.t('Thinking…'));
-				}
-			});
+			this.renderUpdate(update, stream, activity, editedFiles, lastMessage);
 		});
 		const cancel = token.onCancellationRequested(() => connection.notify('session/cancel', { sessionId: acpSessionId }));
 
@@ -540,6 +541,10 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				nativeCompact: options.kind === 'native-compact'
 			});
 			state.conversation.record({ context: metrics.lastContext, contextSize: metrics.lastContextSize, processed, userMessage: options.kind === 'message' });
+			if (options.render && metrics.lastContext !== undefined && metrics.lastContextSize) {
+				// NOVA: the donut gets the conversation total including this request.
+				stream.usage({ promptTokens: metrics.lastContext, completionTokens: 0, contextWindow: metrics.lastContextSize, ...processedUsage(state.conversation) });
+			}
 			if (vscode.workspace.getConfiguration('nova.agents').get<boolean>('requestMetrics', true)) {
 				const report = metrics.finish({
 					stopReason: result?.stopReason,
@@ -806,7 +811,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		return this.configOptions?.find(o => o.id === id)?.category === 'model';
 	}
 
-	private renderUpdate(update: AcpSessionUpdate, stream: vscode.ChatResponseStream, toolCalls: Map<string, { title: string; kind?: string }>, editedFiles: Set<string>, lastMessage: { id: string | undefined }, onThinking: () => void): void {
+	private renderUpdate(update: AcpSessionUpdate, stream: vscode.ChatResponseStream, activity: RunActivity, editedFiles: Set<string>, lastMessage: { id: string | undefined }): void {
 		switch (update.sessionUpdate) {
 			case 'agent_message_chunk':
 				if (update.content?.type === 'text' && update.content.text) {
@@ -816,39 +821,71 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 					}
 					lastMessage.id = update.messageId ?? lastMessage.id;
 					stream.markdown(update.content.text);
+					activity.thoughtSegment++;
 				}
 				break;
 			case 'agent_thought_chunk':
-				onThinking();
+				// NOVA: the reasoning goes into the chat's collapsible activity panel (one per stretch of thinking), never as a new "Thinking…" line per event.
+				if (update.content?.type === 'text' && update.content.text) {
+					stream.thinkingProgress({ id: `${activity.runId}-thought-${activity.thoughtSegment}`, text: update.content.text });
+				}
 				break;
 			case 'tool_call':
 			case 'tool_call_update': {
 				const id = update.toolCallId ?? '';
-				const known = toolCalls.get(id);
+				const known = activity.toolCalls.get(id);
 				const kind = update.kind ?? known?.kind;
 				const target = update.locations?.[0]?.path;
-				const title = target ? `${update.title && update.title !== kind ? update.title : kind ?? ''} ${vscode.workspace.asRelativePath(target)}`.trim() : (update.title ?? known?.title ?? '');
-				toolCalls.set(id, { title, kind });
-				if (update.status === 'in_progress' && target) {
-					// NOVA: whatever the tool (file, shell, fetch), show only "Thinking…": titles are raw paths, commands or logs, and the chat does not render icon codes like "$(edit)".
-						stream.progress(vscode.l10n.t('Thinking…'));
-				} else if (update.status === 'completed' && (kind === 'edit' || kind === 'delete' || kind === 'move')) {
+				const title = target ? vscode.workspace.asRelativePath(target) : shortText(update.title || known?.title || '');
+				const call = known ?? { title, kind, shown: false, done: false };
+				call.title = title || call.title;
+				call.kind = kind;
+				activity.toolCalls.set(id, call);
+				// ACP sends the content of a tool call (output text, file diffs) as an array, unlike message chunks.
+				// The diff of an edit usually comes before the call completes, so it is kept until then.
+				const content = Array.isArray(update.content) ? update.content as readonly AcpToolContentItem[] : undefined;
+				call.diff = diffText(content) ?? call.diff;
+				const rejected = update.status === 'failed' && typeof update.rawOutput === 'string' && update.rawOutput.includes('<tool_use_error>');
+				if (rejected) {
+					// NOVA: the agent rejected the call itself (e.g. "File has not been read yet") and the model fixes it and retries, so it is not a failure to show the user.
+					this.log.info(`[${this.agent.label}] tool call rejected by the agent, not shown: ${(update.rawOutput as string).replace(/\s+/g, ' ').slice(0, 200)}`);
+				}
+				// NOVA: each tool call becomes one line of the activity panel ("Reading x", then "Read x"), which the chat collapses when the answer ends.
+				if (!call.shown && !rejected) {
+					call.shown = true;
+					const part = new vscode.ChatToolInvocationPart(toolName(kind), id);
+					part.enablePartialUpdate = true;
+					part.isComplete = false;
+					part.invocationMessage = new vscode.MarkdownString(describeToolCall(kind, call.title, 'running'));
+					stream.push(part);
+				}
+				if (call.shown && !call.done && (update.status === 'completed' || update.status === 'failed')) {
+					call.done = true;
+					const failed = update.status === 'failed';
+					const part = new vscode.ChatToolInvocationPart(toolName(kind), id);
+					part.enablePartialUpdate = true;
+					part.isComplete = true;
+					part.pastTenseMessage = new vscode.MarkdownString(describeToolCall(kind, call.title, failed ? 'failed' : 'done'));
+					const detail = kind === 'edit' ? call.diff : kind === 'execute' || failed ? toolOutputText(content, update.rawOutput) : undefined;
+					if (detail) {
+						part.toolSpecificData = { input: call.title, output: detail };
+					}
+					stream.push(part);
+				}
+				if (update.status === 'completed' && (kind === 'edit' || kind === 'delete' || kind === 'move')) {
 					for (const location of update.locations ?? []) {
 						editedFiles.add(location.path);
 					}
-				} else if (update.status === 'failed' && typeof update.rawOutput === 'string' && update.rawOutput.includes('<tool_use_error>')) {
-					// NOVA: the agent rejected the call itself (e.g. "File has not been read yet") and the model fixes it and retries, so it is not a failure to show the user.
-					this.log.info(`[${this.agent.label}] tool call rejected by the agent, not shown: ${update.rawOutput.replace(/\s+/g, ' ').slice(0, 200)}`);
-				} else if (update.status === 'failed') {
-					// NOVA: a failed shell command would dump the whole command line into the chat.
-						stream.markdown('\n\n> ' + (FILE_TOOL_KINDS.has(kind ?? '') ? vscode.l10n.t('Tool failed: {0}', title) : vscode.l10n.t('A tool call failed.')) + '\n\n');
 				}
 				break;
 			}
 			case 'plan':
 				if (update.entries?.length) {
 					const pending = update.entries.filter(e => e.status !== 'completed').length;
-					stream.progress(vscode.l10n.t('Plan: {0} of {1} steps left', pending, update.entries.length));
+					if (pending !== activity.planPending) {
+						activity.planPending = pending;
+						stream.thinkingProgress({ id: `${activity.runId}-thought-${activity.thoughtSegment}`, text: '\n' + vscode.l10n.t('Plan: {0} of {1} steps left', pending, update.entries.length) + '\n' });
+					}
 				}
 				break;
 			case 'config_option_update':
@@ -1116,6 +1153,36 @@ const FALLBACK_IDE_MANUAL = [
 	'Use ide_show_diff to show changes and the browser_* tools for web pages in the Integrated Browser.',
 	'Call the ide_manual tool for the full guide.',
 ].join('\n');
+
+/** The conversation total for the context usage donut ("Processed in Conversation"); nothing until something was counted. */
+function processedUsage(conversation: ConversationContext): { processedTokens?: number; processedTokensApproximate?: boolean } {
+	return conversation.processedTotal > 0 ? { processedTokens: conversation.processedTotal, processedTokensApproximate: conversation.approximate } : {};
+}
+
+/** Tool id shown to the chat; it picks the item icon (the chat matches words such as "read" or "search" in it). */
+function toolName(kind: string | undefined): string {
+	return `nova.${kind ?? 'tool'}`;
+}
+
+/** One line of the activity panel for a tool call: running ("Reading x"), done ("Read x") or failed. */
+function describeToolCall(kind: string | undefined, title: string, phase: 'running' | 'done' | 'failed'): string {
+	const target = title ? inlineCode(title) : '';
+	if (phase === 'failed') {
+		return target ? vscode.l10n.t('Failed: {0}', target) : vscode.l10n.t('A tool call failed');
+	}
+	const running = phase === 'running';
+	switch (kind) {
+		case 'read': return running ? vscode.l10n.t('Reading {0}', target) : vscode.l10n.t('Read {0}', target);
+		case 'edit': return running ? vscode.l10n.t('Editing {0}', target) : vscode.l10n.t('Edited {0}', target);
+		case 'delete': return running ? vscode.l10n.t('Deleting {0}', target) : vscode.l10n.t('Deleted {0}', target);
+		case 'move': return running ? vscode.l10n.t('Moving {0}', target) : vscode.l10n.t('Moved {0}', target);
+		case 'search': return running ? vscode.l10n.t('Searching {0}', target) : vscode.l10n.t('Searched {0}', target);
+		case 'execute': return running ? vscode.l10n.t('Running {0}', target) : vscode.l10n.t('Ran {0}', target);
+		case 'fetch': return running ? vscode.l10n.t('Fetching {0}', target) : vscode.l10n.t('Fetched {0}', target);
+		case 'think': return title || vscode.l10n.t('Thinking');
+		default: return running ? vscode.l10n.t('Using {0}', target) : vscode.l10n.t('Used {0}', target);
+	}
+}
 
 function localizedOptionName(id: string, fallback: string): string {
 	switch (id) {
