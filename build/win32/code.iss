@@ -1805,6 +1805,136 @@ begin
 end;
 #endif
 
+// NOVA: default display language of the IDE, chosen in the wizard.
+// The IDE reads it from "locale" in <user profile>\.nova-ide\argv.json. Only English (built in) and Brazilian
+// Portuguese (language pack embedded in the build) exist in the installed app. Unattended installs can pass /IDELANG=en or /IDELANG=pt-br.
+var
+  IdeLanguagePage: TInputOptionWizardPage;
+
+function GetArgvJsonPath(): String;
+begin
+  Result := ExpandConstant('{%USERPROFILE}\.nova-ide\argv.json');
+end;
+
+// Returns the "locale" value of argv.json in lower case, or '' when the file or the key does not exist.
+function ReadArgvLocale(): String;
+var
+  Raw: AnsiString;
+  Content: String;
+  P, Q, ValueStart: Integer;
+begin
+  Result := '';
+  if not LoadStringFromFile(GetArgvJsonPath(), Raw) then
+    Exit;
+  Content := String(Raw);
+  P := Pos('"locale"', Content);
+  if P = 0 then
+    Exit;
+  Q := P + Length('"locale"');
+  while (Q <= Length(Content)) and (Content[Q] <> '"') do
+    Q := Q + 1;
+  ValueStart := Q + 1;
+  Q := ValueStart;
+  while (Q <= Length(Content)) and (Content[Q] <> '"') do
+    Q := Q + 1;
+  Result := Lowercase(Copy(Content, ValueStart, Q - ValueStart));
+end;
+
+// Writes the "locale" key into argv.json, creating the file when needed and keeping every other setting.
+procedure WriteArgvLocale(Locale: String);
+var
+  Raw: AnsiString;
+  Content: String;
+  P, Q, ValueStart: Integer;
+begin
+  ForceDirectories(ExtractFileDir(GetArgvJsonPath()));
+  if not LoadStringFromFile(GetArgvJsonPath(), Raw) then begin
+    SaveStringToFile(GetArgvJsonPath(), '{' + #13#10 + '	"locale": "' + Locale + '"' + #13#10 + '}' + #13#10, False);
+    Exit;
+  end;
+
+  Content := String(Raw);
+  P := Pos('"locale"', Content);
+  if P > 0 then begin
+    Q := P + Length('"locale"');
+    while (Q <= Length(Content)) and (Content[Q] <> '"') do
+      Q := Q + 1;
+    ValueStart := Q + 1;
+    Q := ValueStart;
+    while (Q <= Length(Content)) and (Content[Q] <> '"') do
+      Q := Q + 1;
+    Delete(Content, ValueStart, Q - ValueStart);
+    Insert(Locale, Content, ValueStart);
+  end else begin
+    P := Pos('{', Content);
+    if P = 0 then
+      Content := '{' + #13#10 + '	"locale": "' + Locale + '"' + #13#10 + '}' + #13#10
+    else
+      Insert(#13#10 + '	"locale": "' + Locale + '",', Content, P + 1); // trailing commas are accepted by the IDE's JSONC parser
+  end;
+  SaveStringToFile(GetArgvJsonPath(), AnsiString(Content), False);
+end;
+
+// Whether the language page applies: not for background updates, and not when the user picked another language pack by hand.
+function IsIdeLanguageChoosable(): Boolean;
+var
+  Current: String;
+begin
+  Current := ReadArgvLocale();
+  Result := (Current = '') or (Current = 'pt-br') or (Copy(Current, 1, 2) = 'en');
+end;
+
+procedure InitializeWizard();
+var
+  Current: String;
+begin
+  IdeLanguagePage := CreateInputOptionPage(wpSelectDir,
+    CustomMessage('IdeLanguageTitle'), CustomMessage('IdeLanguageSubtitle'), CustomMessage('IdeLanguageLabel'),
+    True, False);
+  IdeLanguagePage.Add('Portugu' + #$00EA + 's (Brasil)');
+  IdeLanguagePage.Add('English');
+
+  Current := ReadArgvLocale();
+  if Current = '' then begin
+    if ActiveLanguage() = 'english' then
+      Current := 'en'
+    else
+      Current := 'pt-br';
+  end;
+  IdeLanguagePage.Values[0] := (Copy(Current, 1, 2) <> 'en');
+  IdeLanguagePage.Values[1] := (Copy(Current, 1, 2) = 'en');
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  Result := False;
+  if (IdeLanguagePage <> nil) and (PageID = IdeLanguagePage.ID) then
+    Result := IsBackgroundUpdate() or not IsIdeLanguageChoosable();
+end;
+
+// Applies the language chosen in the wizard (or given by /IDELANG) once the files are installed.
+procedure ApplyIdeLanguage();
+var
+  Locale: String;
+begin
+  if IsBackgroundUpdate() then
+    Exit;
+
+  Locale := Lowercase(ExpandConstant('{param:idelang|}'));
+  if (Locale <> 'en') and (Locale <> 'pt-br') then begin
+    Locale := '';
+    if not WizardSilent() and IsIdeLanguageChoosable() then begin
+      if IdeLanguagePage.Values[1] then
+        Locale := 'en'
+      else
+        Locale := 'pt-br';
+    end;
+  end;
+
+  if Locale <> '' then
+    WriteArgvLocale(Locale);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   UpdateResultCode: Integer;
@@ -1812,6 +1942,7 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
+    ApplyIdeLanguage(); // NOVA
     LogContextMenuInstallState();
 
 #ifdef AppxPackageName

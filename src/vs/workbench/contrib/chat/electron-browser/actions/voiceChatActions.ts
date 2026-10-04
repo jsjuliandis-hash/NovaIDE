@@ -772,7 +772,7 @@ class ChatSynthesizerSessions {
 		let totalOffset = 0;
 		let complete = false;
 		do {
-			const responseLength = response.response.toString().length;
+			const responseLength = response.response.getMarkdown().length; // NOVA: only the answer text, never the tool log
 			const { chunk, offset } = this.parseNextChatResponseChunk(response, totalOffset, context);
 			totalOffset = offset;
 			complete = response.isComplete;
@@ -787,7 +787,7 @@ class ChatSynthesizerSessions {
 
 			// NOVA: `isComplete` is read again because the consumer may have spent a long time (waiting for its turn to speak)
 			// while the response completed. Waiting for a change that already happened would never end.
-			if (!complete && !response.isComplete && responseLength === response.response.toString().length) {
+			if (!complete && !response.isComplete && responseLength === response.response.getMarkdown().length) {
 				await raceCancellation(Event.toPromise(response.onDidChange), token); // wait for the response to change
 			}
 		} while (!token.isCancellationRequested && !complete);
@@ -796,7 +796,8 @@ class ChatSynthesizerSessions {
 	private parseNextChatResponseChunk(response: IChatResponseModel, offset: number, context: IChatSynthesizerContext): { readonly chunk: string | undefined; readonly offset: number } {
 		let chunk: string | undefined = undefined;
 
-		const text = response.response.toString();
+		// NOVA: `toString()` also holds the agent activity items (tool calls, "Made changes."); only the markdown is read aloud.
+		const text = response.response.getMarkdown();
 
 		if (response.isComplete) {
 			chunk = text.substring(offset);
