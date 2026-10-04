@@ -144,6 +144,11 @@
         "command": "novaAgentBridge.setApiKey",
         "title": "%command.setApiKey%",
         "category": "Nova"
+      },
+      {
+        "command": "novaAgentBridge.exportMetrics",
+        "title": "%command.exportMetrics%",
+        "category": "Nova"
       }
     ],
     "configuration": {
@@ -153,6 +158,105 @@
           "type": "boolean",
           "default": true,
           "description": "%configuration.injectIdeManual%"
+        },
+        "nova.agents.manualMode": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "full",
+            "off"
+          ],
+          "enumDescriptions": [
+            "%configuration.manualMode.compact%",
+            "%configuration.manualMode.full%",
+            "%configuration.manualMode.off%"
+          ],
+          "default": "compact",
+          "description": "%configuration.manualMode%"
+        },
+        "nova.agents.toolProfile": {
+          "type": "string",
+          "enum": [
+            "full",
+            "browser",
+            "code"
+          ],
+          "enumDescriptions": [
+            "%configuration.toolProfile.full%",
+            "%configuration.toolProfile.browser%",
+            "%configuration.toolProfile.code%"
+          ],
+          "default": "full",
+          "description": "%configuration.toolProfile%"
+        },
+        "nova.agents.requestMetrics": {
+          "type": "boolean",
+          "default": true,
+          "description": "%configuration.requestMetrics%"
+        },
+        "nova.agents.contextWarning.threshold": {
+          "type": "number",
+          "default": 100000,
+          "minimum": 0,
+          "description": "%configuration.contextWarning.threshold%"
+        },
+        "nova.agents.contextWarning.showProcessedTotal": {
+          "type": "boolean",
+          "default": false,
+          "description": "%configuration.contextWarning.showProcessedTotal%"
+        },
+        "nova.agents.compact.maxSummaryChars": {
+          "type": "number",
+          "default": 6000,
+          "minimum": 1500,
+          "maximum": 20000,
+          "description": "%configuration.compact.maxSummaryChars%"
+        },
+        "nova.agents.autoCompact.enabled": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "%configuration.autoCompact.enabled%"
+        },
+        "nova.agents.autoCompact.threshold": {
+          "type": "number",
+          "default": 100000,
+          "minimum": 10000,
+          "description": "%configuration.autoCompact.threshold%"
+        },
+        "nova.agents.autoCompact.minMessagesBetween": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "description": "%configuration.autoCompact.minMessagesBetween%"
+        },
+        "nova.agents.autoCompact.providers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "claudeCode",
+              "codex",
+              "gemini",
+              "opencode",
+              "nvidia",
+              "openrouter"
+            ]
+          },
+          "default": [],
+          "description": "%configuration.autoCompact.providers%"
+        },
+        "nova.agents.autoCompact.mode": {
+          "type": "string",
+          "enum": [
+            "nova",
+            "native"
+          ],
+          "enumDescriptions": [
+            "%configuration.autoCompact.mode.nova%",
+            "%configuration.autoCompact.mode.native%"
+          ],
+          "default": "nova",
+          "description": "%configuration.autoCompact.mode%"
         },
         "nova.agents.opencode.command": {
           "type": "string",

@@ -32,6 +32,26 @@ export interface AcpNewSessionResult {
 
 export interface AcpPromptResult {
 	readonly stopReason: 'end_turn' | 'max_tokens' | 'max_turn_requests' | 'refusal' | 'cancelled' | string;
+	/** Token usage of the turn (unstable ACP field). Its meaning varies: Claude Code sums every model call of the turn, Codex reports the last one. */
+	readonly usage?: AcpUsage;
+	readonly _meta?: AcpPromptMeta;
+}
+
+/** The unstable `_meta` of a `session/prompt` result (Claude Code and Codex adapters): per-model usage, the only cost Claude Code reports for `/compact`. */
+export interface AcpPromptMeta {
+	readonly quota?: {
+		readonly model_usage?: readonly { readonly model?: string; readonly token_count?: { readonly totalTokens?: number } }[];
+	};
+}
+
+/** Token counts as an agent reports them; cache reads and thought tokens may be part of the other counts. */
+export interface AcpUsage {
+	readonly inputTokens?: number;
+	readonly outputTokens?: number;
+	readonly cachedReadTokens?: number;
+	readonly cachedWriteTokens?: number;
+	readonly thoughtTokens?: number;
+	readonly totalTokens?: number;
 }
 
 export type AcpContentBlock =

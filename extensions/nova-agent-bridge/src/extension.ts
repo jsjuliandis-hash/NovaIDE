@@ -6,6 +6,7 @@
 
 import * as vscode from 'vscode';
 import { AgentDefinition, AgentSessionProvider } from './agentSessions';
+import { RecentMetrics } from './requestMetrics';
 
 const AGENTS: readonly AgentDefinition[] = [
 	{
@@ -26,7 +27,8 @@ const AGENTS: readonly AgentDefinition[] = [
 		defaultArgs: ['-y', '@agentclientprotocol/claude-agent-acp'],
 		loginHint: 'claude',
 		icon: 'nova-logo-claude-code',
-		defaultVendor: 'anthropic'
+		defaultVendor: 'anthropic',
+		usageSemantics: 'request-sum'
 	},
 	{
 		type: 'nova-codex',
@@ -36,7 +38,8 @@ const AGENTS: readonly AgentDefinition[] = [
 		defaultArgs: ['-y', '@agentclientprotocol/codex-acp'],
 		loginHint: 'codex login',
 		icon: 'nova-logo-codex',
-		defaultVendor: 'openai'
+		defaultVendor: 'openai',
+		usageSemantics: 'last-call'
 	},
 	{
 		type: 'nova-gemini',
@@ -75,9 +78,10 @@ const AGENTS: readonly AgentDefinition[] = [
 export function activate(context: vscode.ExtensionContext): void {
 	const log = vscode.window.createOutputChannel('Nova Agents', { log: true });
 	context.subscriptions.push(log);
+	const metrics = new RecentMetrics();
 	const gatewayProviders: AgentSessionProvider[] = [];
 	for (const agent of AGENTS) {
-		const provider = new AgentSessionProvider(agent, context.secrets, log);
+		const provider = new AgentSessionProvider(agent, context.secrets, log, metrics, context.globalStorageUri);
 		context.subscriptions.push(provider);
 		if (agent.gateway) {
 			gatewayProviders.push(provider);
@@ -91,6 +95,28 @@ export function activate(context: vscode.ExtensionContext): void {
 		await picked?.provider.askGatewayKey();
 	}));
 	context.subscriptions.push(vscode.commands.registerCommand('novaAgentBridge.showLog', () => log.show()));
+	context.subscriptions.push(vscode.commands.registerCommand('novaAgentBridge.exportMetrics', () => exportMetrics(metrics)));
+}
+
+/** Saves the metrics of the latest requests (sizes and counts only, no prompt text) to a JSON file the user picks. */
+async function exportMetrics(metrics: RecentMetrics): Promise<void> {
+	if (!metrics.size) {
+		void vscode.window.showInformationMessage(vscode.l10n.t('No agent requests were measured yet in this window.'));
+		return;
+	}
+	const now = new Date();
+	const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+	const name = `nova-agent-metrics-${now.toISOString().replace(/[:.]/g, '-')}.json`;
+	const target = await vscode.window.showSaveDialog({
+		title: vscode.l10n.t('Export Request Metrics'),
+		defaultUri: folder ? vscode.Uri.joinPath(folder, name) : undefined,
+		filters: { JSON: ['json'] }
+	});
+	if (!target) {
+		return;
+	}
+	await vscode.workspace.fs.writeFile(target, new TextEncoder().encode(JSON.stringify(metrics.toExport(now), null, '\t')));
+	void vscode.window.showInformationMessage(vscode.l10n.t('Saved the metrics of {0} requests to {1}.', metrics.size, target.fsPath));
 }
 
 export function deactivate(): void { }

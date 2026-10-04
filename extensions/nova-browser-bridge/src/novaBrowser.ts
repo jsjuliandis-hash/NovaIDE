@@ -16,8 +16,10 @@
 import * as vscode from 'vscode';
 // playwright-core has no bundled browsers; we only ever attach to an existing
 // Chromium view via connectOverCDP, never launch one.
-import type { Browser, ConnectOverCDPTransport, Page } from 'playwright-core';
+import type { Browser, ConnectOverCDPTransport, Locator, Page } from 'playwright-core';
 import { markActiveEditorOpenedByAgent } from './agentTabs';
+import { FIELD_TIMEOUT_MS, fillFormFields, maskSecrets, PASSWORD_VALUES_SCRIPT, type INovaFillFormResult, type INovaFormField } from './formFill';
+import { describeLimit, limitLines } from './server/textLimit';
 
 /** Result shape mirroring the internal IInvokeFunctionResult, redefined locally since
  * extensions cannot import from `src/vs/platform/...`. */
@@ -45,6 +47,25 @@ export interface INovaConsoleEntry {
 	level: string;
 	text: string;
 	ts: number;
+}
+
+/** A page of console entries; pass `nextCursor` back as `cursor` to get only what came after. */
+export interface INovaConsolePage {
+	entries: INovaConsoleEntry[];
+	nextCursor: number;
+	/** True when more entries after this page were held back by `limit`. */
+	more: boolean;
+	/** True when entries before `cursor` were already dropped from the buffer (it keeps the last 500). */
+	dropped: boolean;
+}
+
+export interface INovaSnapshotOptions {
+	/** Snapshot only the element matching this Playwright selector instead of the whole page. */
+	rootSelector?: string;
+	/** Return at most this many characters of the tree, cut on line boundaries. */
+	maxChars?: number;
+	/** First line of the tree to return (1-based), to continue a partial snapshot. */
+	startLine?: number;
 }
 
 export interface INovaPageUpdate {
@@ -75,6 +96,9 @@ interface IPageEntry {
 	connection?: Promise<{ browser: Browser; page: Page }>;
 	cdpSession?: vscode.BrowserCDPSession;
 	consoleLog: INovaConsoleEntry[];
+	/** Sequence number of each entry of `consoleLog` (same index), for cursor paging. */
+	consoleSeq: number[];
+	nextConsoleSeq: number;
 	/** Full loads and HMR updates seen since Playwright attached, newest last. */
 	updates: INovaPageUpdate[];
 	readonly onDidUpdate: vscode.EventEmitter<INovaPageUpdate>;
@@ -186,7 +210,7 @@ export class NovaBrowser implements vscode.Disposable {
 	 * update. An update seen within the last `lookbackMs` also counts, since the
 	 * dev server often applies it before the caller gets around to asking.
 	 */
-	async waitForReload(pageId: string, opts?: { timeoutMs?: number; lookbackMs?: number }): Promise<INovaReloadResult> {
+	async waitForReload(pageId: string, opts?: { timeoutMs?: number; lookbackMs?: number; includeSnapshot?: boolean }): Promise<INovaReloadResult> {
 		const entry = this._require(pageId);
 		const { page } = await this._connect(pageId);
 		const since = Date.now() - (opts?.lookbackMs ?? 3_000);
@@ -205,26 +229,47 @@ export class NovaBrowser implements vscode.Disposable {
 			});
 		}
 		await settle(page);
-		return { reason: update?.reason ?? 'timeout', detail: update?.detail, summary: await this.snapshot(pageId) };
+		const summary = opts?.includeSnapshot === false ? await this.pageHeader(page) : await this.snapshot(pageId);
+		return { reason: update?.reason ?? 'timeout', detail: update?.detail, summary };
 	}
 
 	// #endregion
 
 	// #region Automation (all via Playwright over the tab's own CDP session)
 
-	async snapshot(pageId: string): Promise<string> {
+	/**
+	 * Title, URL and ARIA tree of the page. Without options the whole page is returned, as before;
+	 * `rootSelector` narrows it to one region and `maxChars`/`startLine` return part of it.
+	 */
+	async snapshot(pageId: string, opts?: INovaSnapshotOptions): Promise<string> {
 		this._require(pageId); // throws a clear error if the page id is unknown
 		const { page } = await this._connect(pageId);
-		const [snapshot, title] = await Promise.all([
-			page.ariaSnapshot().catch(() => ''),
-			page.title().catch(() => ''),
+		const [rawSnapshot, header, secrets] = await Promise.all([
+			// A missing region is an error worth reporting; the whole page falls back to <empty> as before.
+			opts?.rootSelector ? this._locator(page, opts.rootSelector).ariaSnapshot({ timeout: FIELD_TIMEOUT_MS }) : page.ariaSnapshot().catch(() => ''),
+			this.pageHeader(page),
+			page.evaluate(PASSWORD_VALUES_SCRIPT).then(values => values as string[], () => []),
 		]);
-		return [
-			`Page Title: ${title}`,
-			`URL: ${page.url()}`,
-			`Snapshot:`,
-			snapshot || '<empty>',
-		].join('\n');
+		// NOVA: the ARIA tree shows the value of password fields too; never hand a password to the model.
+		const snapshot = maskSecrets(rawSnapshot, secrets);
+		const lines = [header, opts?.rootSelector ? `Snapshot of ${opts.rootSelector}:` : 'Snapshot:'];
+		if (opts?.maxChars === undefined && opts?.startLine === undefined) {
+			lines.push(snapshot || '<empty>');
+		} else {
+			const limited = limitLines(snapshot, opts);
+			lines.push(limited.text || '<empty>');
+			const footer = describeLimit(limited, 'call browser_snapshot again with startLine: {next} (and the same rootSelector), or narrow it with rootSelector.');
+			if (footer) {
+				lines.push(footer);
+			}
+		}
+		return lines.join('\n');
+	}
+
+	/** Just the title and URL, for results that do not need the tree. */
+	private async pageHeader(page: Page): Promise<string> {
+		const title = await page.title().catch(() => '');
+		return `Page Title: ${title}\nURL: ${page.url()}`;
 	}
 
 	async screenshot(pageId: string, opts?: { fullPage?: boolean }): Promise<Uint8Array> {
@@ -247,16 +292,34 @@ export class NovaBrowser implements vscode.Disposable {
 		return this.snapshot(pageId);
 	}
 
-	async runPlaywright(pageId: string, code: string): Promise<INovaRunResult> {
+	/**
+	 * Fills several form fields with one final snapshot, instead of one browser_type (and one
+	 * full snapshot) per field. See fillFormFields for the rules (no submit, stop at first error).
+	 */
+	async fillForm(pageId: string, fields: readonly INovaFormField[], opts?: { includeSnapshot?: boolean }): Promise<INovaFillFormResult> {
 		const { page } = await this._connect(pageId);
+		const result = await fillFormFields(target => this._locator(page, target), fields);
+		if (result.filled > 0) {
+			await settle(page);
+		}
+		if (opts?.includeSnapshot !== false) {
+			result.summary = await this.snapshot(pageId);
+		}
+		return result;
+	}
+
+	async runPlaywright(pageId: string, code: string, opts?: { includeSnapshot?: boolean }): Promise<INovaRunResult> {
+		const { page } = await this._connect(pageId);
+		// NOVA: a query such as "return page.url()" already answers the question; the whole tree on top of it only costs context.
+		const summarize = () => opts?.includeSnapshot === false ? this.pageHeader(page) : this.snapshot(pageId);
 		try {
 			const fn = new Function(`return (${code})`)() as (page: Page) => unknown;
 			const result = await fn(page);
-			return { result, summary: await this.snapshot(pageId) };
+			return { result, summary: await summarize() };
 		} catch (err) {
 			return {
 				error: err instanceof Error ? err.message : String(err),
-				summary: await this.snapshot(pageId).catch(() => ''),
+				summary: await summarize().catch(() => ''),
 			};
 		}
 	}
@@ -269,6 +332,30 @@ export class NovaBrowser implements vscode.Disposable {
 		return entry.consoleLog.filter(e => e.ts >= sinceMs);
 	}
 
+	/**
+	 * Console entries after `cursor` (a sequence number, so entries with the same timestamp are
+	 * neither repeated nor lost), at most `limit` of them, oldest first.
+	 */
+	consoleLogsPage(pageId: string, opts: { cursor?: number; limit?: number; sinceMs?: number }): INovaConsolePage {
+		const entry = this._require(pageId);
+		const cursor = opts.cursor ?? 0;
+		const matching: number[] = [];
+		entry.consoleLog.forEach((log, index) => {
+			if (entry.consoleSeq[index] > cursor && (opts.sinceMs === undefined || log.ts >= opts.sinceMs)) {
+				matching.push(index);
+			}
+		});
+		const limit = opts.limit !== undefined && opts.limit > 0 ? Math.floor(opts.limit) : matching.length;
+		const selected = matching.slice(0, limit);
+		const lastSeq = selected.length ? entry.consoleSeq[selected[selected.length - 1]] : Math.max(cursor, entry.nextConsoleSeq - 1);
+		return {
+			entries: selected.map(index => entry.consoleLog[index]),
+			nextCursor: lastSeq,
+			more: matching.length > selected.length,
+			dropped: opts.cursor !== undefined && entry.consoleSeq.length > 0 && entry.consoleSeq[0] > cursor + 1,
+		};
+	}
+
 	// #endregion
 
 	// #region Internal: tab tracking
@@ -278,7 +365,7 @@ export class NovaBrowser implements vscode.Disposable {
 		if (existing) {
 			return existing;
 		}
-		const entry: IPageEntry = { id: `page-${this._nextId++}`, tab, consoleLog: [], updates: [], onDidUpdate: new vscode.EventEmitter<INovaPageUpdate>() };
+		const entry: IPageEntry = { id: `page-${this._nextId++}`, tab, consoleLog: [], consoleSeq: [], nextConsoleSeq: 1, updates: [], onDidUpdate: new vscode.EventEmitter<INovaPageUpdate>() };
 		this._pagesByTab.set(tab, entry);
 		this._pagesById.set(entry.id, entry);
 		return entry;
@@ -395,8 +482,10 @@ export class NovaBrowser implements vscode.Disposable {
 
 	private _recordConsole(entry: IPageEntry, level: string, text: string): void {
 		entry.consoleLog.push({ level, text, ts: Date.now() });
+		entry.consoleSeq.push(entry.nextConsoleSeq++);
 		if (entry.consoleLog.length > CONSOLE_BUFFER_LIMIT) {
 			entry.consoleLog.splice(0, entry.consoleLog.length - CONSOLE_BUFFER_LIMIT);
+			entry.consoleSeq.splice(0, entry.consoleSeq.length - CONSOLE_BUFFER_LIMIT);
 		}
 	}
 
@@ -409,8 +498,14 @@ export class NovaBrowser implements vscode.Disposable {
 		entry.onDidUpdate.fire(update);
 	}
 
-	/** Resolves a click/type target: `aria-ref=...` refs from a snapshot, or a raw Playwright selector. */
-	private _locator(page: Page, target: string) {
+	/** Resolves a target: `label=<text>`, `placeholder=<text>`, `aria-ref=...` refs from a snapshot, or a raw Playwright selector. */
+	private _locator(page: Page, target: string): Locator {
+		if (target.startsWith('label=')) {
+			return page.getByLabel(target.slice('label='.length));
+		}
+		if (target.startsWith('placeholder=')) {
+			return page.getByPlaceholder(target.slice('placeholder='.length));
+		}
 		return page.locator(target);
 	}
 

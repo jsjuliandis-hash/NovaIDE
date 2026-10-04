@@ -21,7 +21,8 @@ import { ThemeIcon } from '../../../../../../base/common/themables.js';
 import { URI, UriComponents } from '../../../../../../base/common/uri.js';
 import { generateUuid } from '../../../../../../base/common/uuid.js';
 import { localize, localize2 } from '../../../../../../nls.js';
-import { Action2, registerAction2 } from '../../../../../../platform/actions/common/actions.js';
+import { Action2, MenuId, registerAction2 } from '../../../../../../platform/actions/common/actions.js';
+import { ContextKeyExpr } from '../../../../../../platform/contextkey/common/contextkey.js';
 import { IDialogService } from '../../../../../../platform/dialogs/common/dialogs.js';
 import { IHoverService } from '../../../../../../platform/hover/browser/hover.js';
 import { ServicesAccessor } from '../../../../../../platform/instantiation/common/instantiation.js';
@@ -33,6 +34,7 @@ import { ChatContextKeys } from '../../../common/actions/chatContextKeys.js';
 import { IChatModelReference, IChatService } from '../../../common/chatService/chatService.js';
 import { IChatSessionProviderOptionItem, IChatSessionsService, localChatSessionType } from '../../../common/chatSessionsService.js';
 import { IChatModel } from '../../../common/model/chatModel.js';
+import { isResponseVM } from '../../../common/model/chatViewModel.js';
 import { getChatSessionType, isUntitledChatSession } from '../../../common/model/chatUri.js';
 import { ChatViewId, IChatWidgetService } from '../../chat.js';
 
@@ -792,5 +794,34 @@ registerAction2(class extends Action2 {
 	}
 	async run(accessor: ServicesAccessor): Promise<void> {
 		await getChatTabs(accessor.get(IViewsService))?.activateRelative(-1);
+	}
+});
+
+/** The chat command of nova-agent-bridge that summarizes the conversation and goes on in a new agent session. */
+const NOVA_COMPACT_COMMAND = '/nova-compact';
+
+// NOVA: a button under each answer of a Nova agent (next to Copy) that runs /nova-compact in that answer's chat.
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.chat.nova.compact',
+			title: localize2('nova.chat.compact', "Summarize Conversation (Nova Compact)"),
+			category: localize2('nova.chatTabs.category', "Chat"),
+			icon: Codicon.foldVertical,
+			f1: false,
+			precondition: ChatContextKeys.requestInProgress.negate(),
+			menu: [{
+				id: MenuId.ChatMessageFooter,
+				group: 'navigation',
+				order: 2,
+				when: ContextKeyExpr.and(ChatContextKeys.isResponse, ContextKeyExpr.regex(ChatContextKeys.agentSessionType.key, /^nova-/)),
+			}],
+		});
+	}
+	async run(accessor: ServicesAccessor, ...args: unknown[]): Promise<void> {
+		const chatWidgetService = accessor.get(IChatWidgetService);
+		const item = args[0];
+		const widget = isResponseVM(item) ? chatWidgetService.getWidgetBySessionResource(item.sessionResource) : chatWidgetService.lastFocusedWidget;
+		await widget?.acceptInput(NOVA_COMPACT_COMMAND);
 	}
 });

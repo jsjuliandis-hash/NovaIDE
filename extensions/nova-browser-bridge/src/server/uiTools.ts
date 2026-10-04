@@ -224,7 +224,7 @@ export function registerUiTools(server: McpServer): void {
 	server.registerTool(
 		'ide_ui_snapshot',
 		{
-			description: 'List the visible interactive elements of the Nova IDE window (buttons, menus, tabs, tree rows, inputs, dialog buttons) with a numeric reference each. Use the references with ide_ui_click and ide_ui_type. While a modal dialog is open, only its elements are listed. Call it again after every action, because references change.',
+			description: 'List the visible interactive elements of the Nova IDE window (buttons, menus, tabs, tree rows, inputs, dialog buttons) with a numeric reference each. Use the references with ide_ui_click and ide_ui_type. While a modal dialog is open, only its elements are listed. Call it once before the first action: ide_ui_click, ide_ui_type and ide_ui_key already return the updated snapshot, so use the references of that result and call this again only if the window changed by itself or a reference no longer exists.',
 			inputSchema: {},
 		},
 		async () => {

@@ -3,3 +3,4 @@ tsconfig.json
 **/*.map
 **/*.ts
 !**/*.d.ts
+out/test/**

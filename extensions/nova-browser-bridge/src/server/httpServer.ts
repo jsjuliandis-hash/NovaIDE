@@ -3,18 +3,20 @@
  *  Single local HTTP server (127.0.0.1 only) fronting two surfaces on top of the
  *  same NovaBrowser instance:
  *    - POST /mcp        Streamable HTTP MCP endpoint (Claude Code, Gemini CLI, Codex, ...)
+ *      POST /mcp/code, /mcp/browser, /mcp/full: the same server with a smaller tool catalog
  *    - /v1/*            Plain JSON REST, used by bin/nova-browser.js
  *  Every request passes the same security.checkRequest gate first.
  *-------------------------------------------------------------------------------------------*/
 
 import * as http from 'node:http';
 import { toNodeHandler } from '@modelcontextprotocol/node';
-import { createMcpHandler } from '@modelcontextprotocol/server';
+import { createMcpHandler, type McpHttpHandler } from '@modelcontextprotocol/server';
 import { DevServerManager } from '../devServer/devServerManager';
 import { NovaBrowser } from '../novaBrowser';
-import { buildMcpServer } from './mcp';
+import { buildMcpServer, type McpToolCallRecord } from './mcp';
 import { handleRest } from './rest';
 import { checkRequest } from './security';
+import { profileFromPath, type ToolProfile } from './toolProfiles';
 
 export interface INovaBridgeServer {
 	readonly port: number;
@@ -26,9 +28,12 @@ export function candidatePorts(preferred: number): number[] {
 	return [preferred, 0 /* let the OS pick a free ephemeral port */];
 }
 
-export async function startBridgeServer(novaBrowser: NovaBrowser, devServerManager: DevServerManager, token: string, preferredPort: number, onAuthenticatedRequest: () => void): Promise<INovaBridgeServer> {
-	const mcpHandler = createMcpHandler(() => buildMcpServer(novaBrowser, devServerManager));
-	const mcpNodeHandler = toNodeHandler(mcpHandler);
+const PROFILES: readonly ToolProfile[] = ['code', 'browser', 'full'];
+
+export async function startBridgeServer(novaBrowser: NovaBrowser, devServerManager: DevServerManager, token: string, preferredPort: number, onAuthenticatedRequest: () => void, onToolCall?: (record: McpToolCallRecord) => void): Promise<INovaBridgeServer> {
+	// One handler per profile: each builds a fresh server per request with its own fixed catalog, so tools/list and tools/call always agree.
+	const mcpHandlers = new Map<ToolProfile, McpHttpHandler>(PROFILES.map(profile => [profile, createMcpHandler(() => buildMcpServer(novaBrowser, devServerManager, profile, onToolCall))]));
+	const mcpNodeHandlers = new Map([...mcpHandlers].map(([profile, handler]) => [profile, toNodeHandler(handler)]));
 
 	const server = http.createServer((req, res) => {
 		if (!checkRequest(req, res, token)) {
@@ -36,13 +41,14 @@ export async function startBridgeServer(novaBrowser: NovaBrowser, devServerManag
 		}
 		onAuthenticatedRequest();
 		const pathname = (req.url ?? '/').split('?')[0];
-		if (pathname === '/mcp') {
-			void mcpNodeHandler(req, res);
+		const profile = profileFromPath(pathname);
+		if (profile) {
+			void mcpNodeHandlers.get(profile)!(req, res);
 		} else if (pathname.startsWith('/v1/')) {
 			void handleRest(novaBrowser, devServerManager, req, res);
 		} else {
 			res.writeHead(404, { 'content-type': 'text/plain' });
-			res.end('Not found. Use /mcp (MCP) or /v1/* (REST).');
+			res.end('Not found. Use /mcp (MCP; /mcp/code and /mcp/browser for smaller catalogs) or /v1/* (REST).');
 		}
 	});
 
@@ -51,7 +57,9 @@ export async function startBridgeServer(novaBrowser: NovaBrowser, devServerManag
 	return {
 		port,
 		close: () => new Promise<void>((resolve, reject) => {
-			mcpHandler.close().catch(() => { /* best effort */ });
+			for (const handler of mcpHandlers.values()) {
+				handler.close().catch(() => { /* best effort */ });
+			}
 			server.close(err => err ? reject(err) : resolve());
 		}),
 	};

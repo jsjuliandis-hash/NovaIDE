@@ -30,6 +30,7 @@ export const novaTranslations: Readonly<Record<string, Readonly<Record<string, R
 			'nova.chatTabs.keepRunning': '&&Deixar Terminar em Segundo Plano',
 			'nova.chatTabs.stop': '&&Parar e Fechar',
 			'nova.chatTabs.newChat': 'Novo Chat',
+			'nova.chat.compact': 'Resumir a Conversa (Compact da Nova)',
 			'nova.chatTabs.local': 'Local',
 			'nova.chatTabs.new': 'Nova Aba de Chat',
 			'nova.chatTabs.needsInput': 'Aguardando você',

@@ -12,6 +12,15 @@ import * as vscode from 'vscode';
 import { Gateway, GatewayId, GATEWAYS } from './gateways';
 import { vendorIcon } from './vendors';
 import { AcpAuthMethod, AcpAvailableCommand, AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPermissionOption, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
+import { ConversationContext, decideAutoCompact, formatTokenCount, modelsUsed, requestProcessedTokens, UsageSemantics } from './contextAccounting';
+import { buildSummaryRequest, clampSummaryChars, cleanSummary, DEFAULT_SUMMARY_CHARS, NOVA_COMPACT_COMMAND, parseCompactCommand, summaryDocument, wrapSummary } from './novaCompact';
+import { formatMetrics, RecentMetrics, RequestKind, RequestMetrics } from './requestMetrics';
+
+/** How much of the Nova IDE manual an agent receives with the first prompt (nova.agents.manualMode). */
+type ManualMode = 'compact' | 'full' | 'off';
+
+/** Which catalog of Nova MCP tools a new session gets (nova.agents.toolProfile); see nova-browser-bridge toolProfiles.ts. */
+type ToolProfile = 'code' | 'browser' | 'full';
 
 /**
  * Static description of an ACP agent. The chat session `type` must match a `chatSessions`
@@ -30,6 +39,8 @@ export interface AgentDefinition {
 	readonly defaultVendor?: string;
 	/** Set for the model gateways (NVIDIA, OpenRouter): OpenCode limited to that gateway, with its own API key. */
 	readonly gateway?: GatewayId;
+	/** What the `usage` of a prompt result means for this agent (see contextAccounting.ts); unset when not measured. */
+	readonly usageSemantics?: UsageSemantics;
 }
 
 interface SessionState {
@@ -39,7 +50,22 @@ interface SessionState {
 	appliedOptions: Map<string, string>;
 	/** True once the Nova IDE manual has been handed to the agent in this session. */
 	manualSent?: boolean;
+	/** Context and processed tokens of this chat tab, across agent sessions. */
+	readonly conversation: ConversationContext;
+	/** Summary from a Nova compact, sent with the first prompt of the new agent session. */
+	pendingSummary?: string;
+	/** The "compacting would not help" notice was already shown in this tab. */
+	fixedPartNoticeShown?: boolean;
 }
+
+/** One `session/prompt` that ran to the end: the agent's result and the text it wrote. */
+interface PromptRun {
+	readonly result: AcpPromptResult;
+	readonly text: string;
+}
+
+/** How many Nova compact summaries are kept on disk. */
+const KEPT_SUMMARIES = 50;
 
 /** ACP config options that become pickers in the chat input, in display order: each slot matches an ACP category or one of the known option ids. */
 const PICKER_SLOTS: readonly { readonly category: string; readonly ids: readonly string[] }[] = [
@@ -71,9 +97,11 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	private connection: Promise<AcpConnection> | undefined;
 	/** Config options reported by the agent for new sessions (from the first session/new). */
 	private configOptions: readonly AcpConfigOption[] | undefined;
-	/** A session created ahead of time to discover the config options, reused by the next new chat. */
-	private spareSession: Promise<AcpNewSessionResult> | undefined;
+	/** A session created ahead of time to discover the config options, reused by the next new chat (if the tool profile still matches). */
+	private spareSession: { readonly result: Promise<AcpNewSessionResult>; readonly toolProfile: ToolProfile } | undefined;
 	private readonly inputStates = new Set<vscode.ChatSessionInputState>();
+	/** Input states rebuilt from a session's applied options because the chat had lost them; pushed back so the picker shows them. */
+	private readonly restoredInputStates = new WeakSet<vscode.ChatSessionInputState>();
 	private authMethods: readonly AcpAuthMethod[] = [];
 	/** Whether the agent accepts images in a prompt (ACP promptCapabilities.image). */
 	private imagePrompts = false;
@@ -81,7 +109,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	private commands: readonly AcpAvailableCommand[] = [];
 	private readonly commandsChanged = new vscode.EventEmitter<void>();
 
-	constructor(private readonly agent: AgentDefinition, private readonly secrets: vscode.SecretStorage, private readonly log: vscode.LogOutputChannel) {
+	constructor(private readonly agent: AgentDefinition, private readonly secrets: vscode.SecretStorage, private readonly log: vscode.LogOutputChannel, private readonly metrics: RecentMetrics, private readonly storage: vscode.Uri) {
 		this.controller = vscode.chat.createChatSessionItemController(agent.type, async () => {
 			this.controller.items.replace([...this.sessions.values()].map(s => s.item));
 		});
@@ -92,8 +120,15 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			return this.createSession(resource, context.request.prompt).item;
 		};
 
-		this.controller.getChatSessionInputState = async (_sessionResource, context) => {
-			const state = this.controller.createChatSessionInputState(this.buildGroups(context.previousInputState));
+		this.controller.getChatSessionInputState = async (sessionResource, context) => {
+			// NOVA: without a previous state (proxy commands, refreshes) a session that already talks to the agent keeps
+			// the options it runs with, instead of falling back to the agent's default model.
+			const known = sessionResource && !context.previousInputState ? this.sessions.get(sessionResource.toString()) : undefined;
+			const restored = !!known?.acpSessionId && known.appliedOptions.size > 0;
+			const state = this.controller.createChatSessionInputState(this.buildGroups(context.previousInputState, restored ? known!.appliedOptions : undefined));
+			if (restored) {
+				this.restoredInputStates.add(state);
+			}
 			this.inputStates.add(state);
 			state.onDidDispose(() => this.inputStates.delete(state));
 			// NOVA: this runs for every provider when the IDE opens, so it must not start the agent (see provideChatSessionContent).
@@ -119,7 +154,16 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	private provideSlashCommands(): vscode.ChatSessionCustomizationItem[] {
 		// NOVA: this is asked for every provider when the IDE opens. Starting the agent here would launch all of them at once,
 		// so the list stays empty until the user opens a chat of this provider, which starts the agent and fills it in.
-		return this.commands.map(command => ({
+		// The Nova compact is handled here, not by the agent, so it is always listed.
+		const novaCompact: vscode.ChatSessionCustomizationItem = {
+			uri: vscode.Uri.from({ scheme: 'agent-builtin', path: `/${NOVA_COMPACT_COMMAND}` }),
+			type: vscode.ChatSessionCustomizationType.Prompt,
+			name: NOVA_COMPACT_COMMAND,
+			description: vscode.l10n.t('Summarize the conversation and go on in a new agent session (Nova compact) — optional focus'),
+			source: 'builtin',
+			userInvocable: true
+		};
+		return [novaCompact, ...this.commands.filter(command => command.name !== NOVA_COMPACT_COMMAND).map((command): vscode.ChatSessionCustomizationItem => ({
 			// `agent-builtin` marks a command without a file: the chat sends the typed `/name` to the agent as plain text.
 			uri: vscode.Uri.from({ scheme: 'agent-builtin', path: `/${command.name}` }),
 			type: vscode.ChatSessionCustomizationType.Prompt,
@@ -127,7 +171,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			description: [command.description, command.input?.hint].filter(Boolean).join(' — ') || undefined,
 			source: 'builtin',
 			userInvocable: true
-		}));
+		}))];
 	}
 
 	private setCommands(commands: readonly AcpAvailableCommand[]): void {
@@ -141,7 +185,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		const item = this.controller.createChatSessionItem(resource, label);
 		item.iconPath = new vscode.ThemeIcon(this.agent.icon);
 		item.timing = { created: Date.now() };
-		const state: SessionState = { acpSessionId: undefined, item, appliedOptions: new Map() };
+		const state: SessionState = { acpSessionId: undefined, item, appliedOptions: new Map(), conversation: new ConversationContext() };
 		this.sessions.set(resource.toString(), state);
 		this.controller.items.add(item);
 		return state;
@@ -156,13 +200,21 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		// NOVA: a session of this provider is being opened, the first sign that the user wants it. Start the agent and discover
 		// its models in the background (pickers fill in when ready) instead of launching every agent when the IDE opens.
 		void this.warmUp();
+		const state = this.sessions.get(resource.toString());
+		// NOVA: the chat forgets the options of a tab when it recreates the tab's session data (e.g. switching tabs), and the
+		// picker then falls back to the agent's default model, which the next message would switch to. A session that
+		// already talks to the agent keeps the options it runs with.
+		const restore = !!state?.acpSessionId && state.appliedOptions.size > 0;
+		const groups = restore ? this.buildGroups(undefined, state!.appliedOptions) : context?.inputState.groups ?? [];
 		const options: Record<string, vscode.ChatSessionProviderOptionItem> = {};
-		for (const group of context?.inputState.groups ?? []) {
+		for (const group of groups) {
 			if (group.selected) {
 				options[group.id] = group.selected;
 			}
 		}
-		const state = this.sessions.get(resource.toString());
+		if (restore) {
+			this.log.info(`[${this.agent.label}] reopened session ${state!.acpSessionId}; keeping its options (${Object.entries(options).map(([id, item]) => `${id} ${item.id}`).join(', ')})`);
+		}
 		return { title: state?.item.label, history: [], options, requestHandler: undefined };
 	}
 
@@ -202,18 +254,19 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		return this.connection;
 	}
 
-	private newAcpSession(): Promise<AcpNewSessionResult> {
-		return this.withAuthentication(() => this.doNewAcpSession());
+	private newAcpSession(toolProfile: ToolProfile): Promise<AcpNewSessionResult> {
+		return this.withAuthentication(() => this.doNewAcpSession(toolProfile));
 	}
 
-	private async doNewAcpSession(): Promise<AcpNewSessionResult> {
+	private async doNewAcpSession(toolProfile: ToolProfile): Promise<AcpNewSessionResult> {
 		const connection = await this.getConnection();
 		const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? os.homedir();
 		const result = await connection.request<AcpNewSessionResult>('session/new', {
 			// opencode rejects backslash paths on Windows
 			cwd: folder.replace(/\\/g, '/'),
-			mcpServers: readNovaBrowserMcpServers()
+			mcpServers: readNovaBrowserMcpServers(toolProfile)
 		});
+		this.log.info(`[${this.agent.label}] new session ${result.sessionId} with the "${toolProfile}" Nova tool profile`);
 		const options = [...(result.configOptions ?? [])];
 		// Agents that predate config options (e.g. Gemini CLI) report models and modes separately.
 		if (!options.some(o => o.category === 'model' || o.id === 'model') && result.models?.availableModels?.length) {
@@ -244,16 +297,24 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	private async ensureConfigOptions(): Promise<void> {
 		if (!this.spareSession) {
 			// Background warm-up: never prompt for sign-in here, only when the user sends a request.
-			this.spareSession = this.doNewAcpSession();
-			this.spareSession.catch(() => this.spareSession = undefined);
+			const toolProfile = readToolProfile();
+			const spare = { result: this.doNewAcpSession(toolProfile), toolProfile };
+			this.spareSession = spare;
+			spare.result.catch(() => {
+				if (this.spareSession === spare) {
+					this.spareSession = undefined;
+				}
+			});
 		}
-		await this.spareSession;
+		await this.spareSession.result;
 	}
 
 	private takeSpareSession(): Promise<AcpNewSessionResult> {
 		const spare = this.spareSession;
 		this.spareSession = undefined;
-		return spare ?? this.newAcpSession();
+		const toolProfile = readToolProfile();
+		// The catalog is fixed when the session is created, so a spare made before the setting changed is not reused.
+		return spare && spare.toolProfile === toolProfile ? spare.result : this.newAcpSession(toolProfile);
 	}
 
 	private setConfigOptions(options: readonly AcpConfigOption[]): void {
@@ -265,7 +326,8 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		}
 	}
 
-	private buildGroups(previous: vscode.ChatSessionInputState | undefined): vscode.ChatSessionProviderOptionGroup[] {
+	/** Picker groups from the agent's options; the selection comes from `applied` (what a session runs with), else `previous`, else the agent default. */
+	private buildGroups(previous: vscode.ChatSessionInputState | undefined, applied?: ReadonlyMap<string, string>): vscode.ChatSessionProviderOptionGroup[] {
 		const groups: vscode.ChatSessionProviderOptionGroup[] = [];
 		for (const slot of PICKER_SLOTS) {
 			const option = this.configOptions?.find(o => o.type === 'select' && o.options?.length && (o.category === slot.category || slot.ids.includes(o.id)));
@@ -279,8 +341,9 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				icon: slot.category === 'model' ? vendorIcon(o.value, o.name, this.agent.defaultVendor) : undefined,
 				default: o.value === option.currentValue
 			}));
+			const appliedValue = applied?.get(option.id);
 			const previousSelection = previous?.groups.find(g => g.id === option.id)?.selected;
-			const selected = items.find(i => i.id === previousSelection?.id) ?? items.find(i => i.default) ?? items[0];
+			const selected = items.find(i => i.id === appliedValue) ?? items.find(i => i.id === previousSelection?.id) ?? items.find(i => i.default) ?? items[0];
 			groups.push({ id: option.id, name: localizedOptionName(slot.category, option.name), items, selected });
 		}
 		return groups;
@@ -309,6 +372,7 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 
 		const startedAt = Date.now();
 		let connection: AcpConnection;
+		let modelChange: string | undefined;
 		try {
 			if (!await this.ensureGatewayKey()) {
 				throw new Error(vscode.l10n.t('{0} needs an API key. Run "Nova Agents: Set API Key" to add it.', this.agent.label));
@@ -321,31 +385,121 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			if (!state.acpSessionId) {
 				state.acpSessionId = (await this.takeSpareSession()).sessionId;
 			}
-			await this.applyOptions(connection, state, sessionContext.inputState);
+			modelChange = await this.applyOptions(connection, state, sessionContext.inputState);
+			if (this.restoredInputStates.has(sessionContext.inputState)) {
+				// NOVA: the chat had no options for this tab; hand them back so its pickers show what the session runs with.
+				this.log.info(`[${this.agent.label}] session ${state.acpSessionId}: the chat had lost the options of this tab; keeping ${[...state.appliedOptions].map(([id, value]) => `${id} ${value}`).join(', ')}`);
+				sessionContext.inputState.groups = [...sessionContext.inputState.groups];
+			}
 		} catch (error) {
 			this.finish(state, vscode.ChatSessionStatus.Failed);
 			return this.reportError(error, stream);
 		}
 
+		this.log.info(`[${this.agent.label}] request: connection and session ready after ${Date.now() - startedAt} ms (session ${state.acpSessionId}, first prompt: ${!state.manualSent})`);
+		if (modelChange) {
+			// NOVA: a model switch changes the price of every following call, so it never happens silently.
+			stream.markdown(vscode.l10n.t('_Model changed: {0}._', modelChange) + '\n\n');
+		}
+
+		try {
+			const command = parseCompactCommand(request.command ? `/${request.command} ${request.prompt}` : request.prompt);
+			if (command?.kind === 'nova') {
+				await this.novaCompact(connection, state, stream, token, command.focus, modelChange);
+				this.finish(state, vscode.ChatSessionStatus.Completed);
+				return {};
+			}
+			if (!command) {
+				await this.autoCompact(connection, state, stream, token);
+				if (token.isCancellationRequested) {
+					this.finish(state, vscode.ChatSessionStatus.Completed);
+					return {};
+				}
+			}
+
+			const prompt = await toPromptBlocks(request, this.imagePrompts);
+			const attachments = prompt.length - 1;
+			// The agent is an external process that knows nothing about Nova IDE: hand it the manual once per session.
+			// The mode is read here, at the first prompt, so changing it never re-sends the manual in the middle of a conversation.
+			const manual = state.manualSent ? undefined : await this.readIdeManual();
+			const summary = state.pendingSummary;
+			if (summary) {
+				prompt.unshift({ type: 'text', text: wrapSummary(summary) });
+			}
+			if (manual) {
+				prompt.unshift({ type: 'text', text: `<nova-ide-manual>\n${manual}\n</nova-ide-manual>` });
+			}
+			state.manualSent = true;
+			const kind: RequestKind = command?.kind === 'native' ? 'native-compact' : 'message';
+			await this.runPrompt(connection, state, prompt, stream, token, {
+				kind,
+				render: true,
+				shape: { messageChars: request.prompt.length, manualChars: manual?.length ?? 0, summaryChars: summary?.length ?? 0, attachments },
+				modelChange
+			});
+			state.pendingSummary = undefined;
+			if (kind === 'native-compact') {
+				// The manual sat in the history the agent just summarized away: send it again with the next prompt.
+				state.manualSent = false;
+				state.conversation.recordCompact();
+			} else {
+				this.showContextNotes(state, stream);
+			}
+			this.finish(state, vscode.ChatSessionStatus.Completed);
+			return {};
+		} catch (error) {
+			this.finish(state, vscode.ChatSessionStatus.Failed);
+			return this.reportError(error, stream);
+		}
+	}
+
+	/**
+	 * Sends one prompt to the tab's agent session and waits for the end of the turn. With `render`, the answer is
+	 * streamed into the chat; without it (summaries, compacts) the agent's text is only collected. Every run is
+	 * measured and added to the tab's context accounting, even when it fails.
+	 */
+	private async runPrompt(connection: AcpConnection, state: SessionState, prompt: AcpContentBlock[], stream: vscode.ChatResponseStream, token: vscode.CancellationToken, options: {
+		readonly kind: RequestKind;
+		readonly render: boolean;
+		readonly shape: { readonly messageChars: number; readonly manualChars: number; readonly summaryChars?: number; readonly attachments: number };
+		readonly modelChange?: string;
+	}): Promise<PromptRun> {
 		const acpSessionId = state.acpSessionId!;
-		this.log.info(`[${this.agent.label}] request: connection and session ready after ${Date.now() - startedAt} ms (session ${acpSessionId}, first prompt: ${!state.manualSent})`);
+		const startedAt = Date.now();
 		let firstUpdateAt: number | undefined;
 		const toolCalls = new Map<string, { title: string; kind?: string }>();
 		const editedFiles = new Set<string>();
 		let thinking = false;
+		let text = '';
 		const lastMessage = { id: undefined as string | undefined };
+		// NOVA: one collector per request, fed only by this session's updates, so chat tabs running at the same time never mix.
+		const metrics = new RequestMetrics(randomId(), this.agent.label, acpSessionId, Date.now, options.kind);
+		metrics.recordPrompt(options.shape);
 
 		const listener = connection.onDidUpdate(({ sessionId, update }) => {
 			if (sessionId !== acpSessionId) {
 				return;
 			}
 			firstUpdateAt ??= Date.now();
+			metrics.observe(update);
 			if (update.sessionUpdate === 'usage_update') {
 				this.log.info(`[${this.agent.label}] usage: context ${update.used ?? '?'} of ${update.size ?? '?'} tokens${update.cost ? `, cost ${update.cost.amount} ${update.cost.currency}` : ''}`);
-				if (update.used !== undefined && update.size) {
+				if (options.render && update.used !== undefined && update.size) {
 					// NOVA: feeds the context usage donut of the chat input (used tokens out of the model's context window).
 					stream.usage({ promptTokens: update.used, completionTokens: 0, contextWindow: update.size });
 				}
+			}
+			if (!options.render) {
+				if (update.sessionUpdate === 'agent_message_chunk' && update.content?.type === 'text' && update.content.text) {
+					if (update.messageId && lastMessage.id && update.messageId !== lastMessage.id) {
+						text += '\n\n';
+					}
+					lastMessage.id = update.messageId ?? lastMessage.id;
+					text += update.content.text;
+				} else if (update.sessionUpdate === 'config_option_update' && update.configOptions) {
+					this.configOptions = update.configOptions;
+				}
+				return;
 			}
 			this.renderUpdate(update, stream, toolCalls, editedFiles, lastMessage, () => {
 				if (!thinking) {
@@ -356,57 +510,249 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		});
 		const cancel = token.onCancellationRequested(() => connection.notify('session/cancel', { sessionId: acpSessionId }));
 
+		let result: AcpPromptResult | undefined;
 		try {
-			const prompt = await toPromptBlocks(request, this.imagePrompts);
-			// The agent is an external process that knows nothing about Nova IDE: hand it the manual once per session.
-			const manual = state.manualSent ? undefined : this.readIdeManual();
-			if (manual) {
-				prompt.unshift({ type: 'text', text: `<nova-ide-manual>\n${manual}\n</nova-ide-manual>` });
+			let attempt = 0;
+			result = await this.withAuthentication(() => {
+				metrics.recordAttempt(attempt++ > 0);
+				return connection.request<AcpPromptResult>('session/prompt', { sessionId: acpSessionId, prompt });
+			});
+			this.log.info(`[${this.agent.label}] response${options.kind === 'message' ? '' : ` (${options.kind})`}: first update after ${firstUpdateAt ? firstUpdateAt - startedAt : '?'} ms, finished after ${Date.now() - startedAt} ms, stopReason ${result.stopReason}, prompt ${JSON.stringify(prompt).length} characters, result ${JSON.stringify(result)}`);
+			if (options.render) {
+				for (const file of editedFiles) {
+					stream.reference(vscode.Uri.file(file));
+				}
+				if (result.stopReason === 'refusal') {
+					stream.markdown('\n\n' + vscode.l10n.t('_The agent refused to continue._'));
+				} else if (result.stopReason === 'max_tokens' || result.stopReason === 'max_turn_requests') {
+					stream.markdown('\n\n' + vscode.l10n.t('_The agent stopped: limit reached ({0})._', result.stopReason));
+				}
 			}
-			state.manualSent = true;
-			const result = await this.withAuthentication(() => connection.request<AcpPromptResult>('session/prompt', { sessionId: acpSessionId, prompt }));
-			this.log.info(`[${this.agent.label}] response: first update after ${firstUpdateAt ? firstUpdateAt - startedAt : '?'} ms, finished after ${Date.now() - startedAt} ms, stopReason ${result.stopReason}, prompt ${JSON.stringify(prompt).length} characters, result ${JSON.stringify(result)}`);
-			for (const file of editedFiles) {
-				stream.reference(vscode.Uri.file(file));
-			}
-			if (result.stopReason === 'refusal') {
-				stream.markdown('\n\n' + vscode.l10n.t('_The agent refused to continue._'));
-			} else if (result.stopReason === 'max_tokens' || result.stopReason === 'max_turn_requests') {
-				stream.markdown('\n\n' + vscode.l10n.t('_The agent stopped: limit reached ({0})._', result.stopReason));
-			}
-			this.finish(state, vscode.ChatSessionStatus.Completed);
-			return {};
-		} catch (error) {
-			this.finish(state, vscode.ChatSessionStatus.Failed);
-			return this.reportError(error, stream);
+			return { result, text };
 		} finally {
 			listener.dispose();
 			cancel.dispose();
+			const processed = requestProcessedTokens({
+				semantics: this.agent.usageSemantics,
+				usage: result?.usage,
+				meta: result?._meta,
+				contextUpdates: metrics.contextUpdates,
+				nativeCompact: options.kind === 'native-compact'
+			});
+			state.conversation.record({ context: metrics.lastContext, contextSize: metrics.lastContextSize, processed, userMessage: options.kind === 'message' });
+			if (vscode.workspace.getConfiguration('nova.agents').get<boolean>('requestMetrics', true)) {
+				const report = metrics.finish({
+					stopReason: result?.stopReason,
+					usage: result?.usage,
+					failed: !result,
+					models: modelsUsed(result?._meta),
+					modelChange: options.modelChange,
+					processedTokens: processed.tokens,
+					processedSource: processed.source,
+					processedTotal: state.conversation.processedTotal
+				});
+				this.metrics.add(report);
+				this.log.info(`[${this.agent.label}] ${formatMetrics(report)}`);
+			}
 		}
 	}
 
-	/** The Nova IDE manual (SKILL.md) shipped with nova-browser-bridge, or a short built-in summary if it cannot be read. */
-	private readIdeManual(): string | undefined {
-		if (!vscode.workspace.getConfiguration('nova.agents').get<boolean>('injectIdeManual', true)) {
-			return undefined;
+	/** The warning about a large context and, when enabled, the running total, at the end of an answer. */
+	private showContextNotes(state: SessionState, stream: vscode.ChatResponseStream): void {
+		const config = vscode.workspace.getConfiguration('nova.agents');
+		const conversation = state.conversation;
+		const locale = vscode.env.language;
+		const total = () => conversation.processedTotal > 0 ? `${conversation.approximate ? '≈ ' : ''}${formatTokenCount(conversation.processedTotal, locale)}` : vscode.l10n.t('n/a');
+		const warning = conversation.takeWarning(config.get<number>('contextWarning.threshold', 100000));
+		if (warning) {
+			const context = formatTokenCount(warning.context, locale);
+			const auto = this.autoCompactOptions();
+			stream.markdown('\n\n' + (auto.enabled && auto.providerAllowed
+				? vscode.l10n.t('_Context: {0} tokens re-read on every model call · this conversation has processed {1} tokens so far. It will be summarized before a message once it passes the auto compact limit._', context, total())
+				: vscode.l10n.t('_Context: {0} tokens re-read on every model call · this conversation has processed {1} tokens so far. Run /nova-compact to go on from a summary in a new agent session, or start a new tab._', context, total())));
+		} else if (config.get<boolean>('contextWarning.showProcessedTotal', false)) {
+			const context = conversation.lastContext === undefined ? vscode.l10n.t('n/a') : formatTokenCount(conversation.lastContext, locale);
+			stream.markdown('\n\n' + vscode.l10n.t('_Conversation: {0} tokens processed · context {1}._', total(), context));
 		}
+	}
+
+	private autoCompactOptions(): { enabled: boolean; threshold: number; minMessagesBetween: number; providerAllowed: boolean; mode: 'nova' | 'native' } {
+		const config = vscode.workspace.getConfiguration('nova.agents.autoCompact');
+		const providers = config.get<string[]>('providers', []);
+		const id = this.agent.settingsSection.split('.').pop() ?? this.agent.type;
+		return {
+			enabled: config.get<boolean>('enabled', false),
+			threshold: config.get<number>('threshold', 100000),
+			minMessagesBetween: config.get<number>('minMessagesBetween', 5),
+			providerAllowed: !providers.length || providers.includes(id),
+			mode: config.get<string>('mode', 'nova') === 'native' ? 'native' : 'nova'
+		};
+	}
+
+	/** Compacts the conversation before the user's message when it passed the configured limit (off by default). */
+	private async autoCompact(connection: AcpConnection, state: SessionState, stream: vscode.ChatResponseStream, token: vscode.CancellationToken): Promise<void> {
+		const options = this.autoCompactOptions();
+		const decision = decideAutoCompact(state.conversation, options);
+		if (!decision.compact) {
+			if (decision.reason === 'too-soon' || decision.reason === 'fixed-part-too-big') {
+				this.log.info(`[${this.agent.label}] auto compact skipped (${decision.reason}): context ${state.conversation.lastContext}, ${state.conversation.messagesSinceCompact} messages since the last compact`);
+			}
+			if (decision.reason === 'fixed-part-too-big' && !state.fixedPartNoticeShown) {
+				state.fixedPartNoticeShown = true;
+				stream.markdown(vscode.l10n.t('_The last compact already left {0} tokens of context, close to the auto compact limit, so compacting again would save little. Start a new tab to reduce it._', formatTokenCount(state.conversation.contextAfterCompact ?? 0, vscode.env.language)) + '\n\n');
+			}
+			return;
+		}
+		this.log.info(`[${this.agent.label}] auto compact (${options.mode}): context ${state.conversation.lastContext} ≥ ${options.threshold}`);
+		if (options.mode === 'native') {
+			await this.nativeCompact(connection, state, stream, token);
+		} else {
+			await this.novaCompact(connection, state, stream, token, '', undefined);
+		}
+	}
+
+	/**
+	 * Nova compact: the agent writes a hand-off summary of the conversation (not shown in the chat), and the tab
+	 * goes on in a new agent session with the same options, whose first prompt carries the manual and the summary.
+	 * The visible chat history stays as it is. On any failure the conversation stays in the current session.
+	 */
+	private async novaCompact(connection: AcpConnection, state: SessionState, stream: vscode.ChatResponseStream, token: vscode.CancellationToken, focus: string, modelChange: string | undefined): Promise<boolean> {
+		const contextBefore = state.conversation.lastContext;
+		if (!state.manualSent) {
+			stream.markdown(vscode.l10n.t('_There is nothing to summarize yet in this conversation._') + '\n\n');
+			return false;
+		}
+		stream.progress(vscode.l10n.t('Summarizing the conversation to go on in a new {0} session…', this.agent.label));
+		const maxChars = clampSummaryChars(vscode.workspace.getConfiguration('nova.agents.compact').get<number>('maxSummaryChars', DEFAULT_SUMMARY_CHARS));
+		const request = buildSummaryRequest(maxChars, focus);
+		let run: PromptRun;
 		try {
-			const extensionPath = vscode.extensions.getExtension('nova-ide.nova-browser-bridge')?.extensionPath;
-			if (extensionPath) {
-				const manual = fs.readFileSync(path.join(extensionPath, 'media', 'nova-ide', 'SKILL.md'), 'utf8');
-				this.log.info(`[${this.agent.label}] sending the Nova IDE manual (${manual.length} characters) with the first prompt`);
-				return manual;
+			run = await this.runPrompt(connection, state, [{ type: 'text', text: request }], stream, token, {
+				kind: 'nova-compact',
+				render: false,
+				shape: { messageChars: request.length, manualChars: 0, attachments: 0 },
+				modelChange
+			});
+		} catch (error) {
+			this.log.warn(`[${this.agent.label}] nova compact failed: ${error instanceof Error ? error.message : String(error)}`);
+			stream.markdown(vscode.l10n.t('_Could not summarize the conversation, so it goes on in the same session._') + '\n\n');
+			return false;
+		}
+		if (token.isCancellationRequested || run.result.stopReason === 'cancelled') {
+			return false;
+		}
+		const summary = cleanSummary(run.text);
+		if (!summary) {
+			this.log.warn(`[${this.agent.label}] nova compact: the agent returned ${run.text.length} characters, not a usable summary`);
+			stream.markdown(vscode.l10n.t('_The agent did not return a usable summary, so the conversation goes on in the same session._') + '\n\n');
+			return false;
+		}
+
+		let newSessionId: string;
+		try {
+			newSessionId = (await this.takeSpareSession()).sessionId;
+			await this.restoreOptions(connection, newSessionId, state.appliedOptions);
+		} catch (error) {
+			this.log.warn(`[${this.agent.label}] nova compact: could not start the new session: ${error instanceof Error ? error.message : String(error)}`);
+			stream.markdown(vscode.l10n.t('_Could not start a new {0} session, so the conversation goes on in the same one._', this.agent.label) + '\n\n');
+			return false;
+		}
+		const previousSessionId = state.acpSessionId;
+		state.acpSessionId = newSessionId;
+		state.manualSent = false;
+		state.pendingSummary = summary;
+		state.conversation.recordCompact();
+		this.log.info(`[${this.agent.label}] nova compact: session ${previousSessionId} → ${newSessionId}, summary ${summary.length} characters (asked for at most ${maxChars}), context before ${contextBefore ?? 'n/a'}`);
+
+		const file = await this.saveSummary(summary, contextBefore);
+		const locale = vscode.env.language;
+		stream.markdown(vscode.l10n.t('_Conversation summarized in {0} characters (≈ {1} tokens) in place of {2} tokens of context. The next message goes to a new {3} session that starts from the summary._',
+			summary.length, formatTokenCount(Math.round(summary.length / 4), locale), contextBefore === undefined ? vscode.l10n.t('n/a') : formatTokenCount(contextBefore, locale), this.agent.label));
+		if (file) {
+			stream.markdown(' ');
+			stream.anchor(file, vscode.l10n.t('View the summary'));
+		}
+		stream.markdown('\n\n');
+		return true;
+	}
+
+	/** The agent's own `/compact` (auto compact in `native` mode), when the agent offers it. */
+	private async nativeCompact(connection: AcpConnection, state: SessionState, stream: vscode.ChatResponseStream, token: vscode.CancellationToken): Promise<boolean> {
+		if (!this.commands.some(command => command.name === 'compact')) {
+			this.log.info(`[${this.agent.label}] auto compact skipped: the agent does not offer /compact`);
+			return false;
+		}
+		const contextBefore = state.conversation.lastContext;
+		stream.progress(vscode.l10n.t('Compacting the conversation with the /compact of {0}…', this.agent.label));
+		try {
+			const run = await this.runPrompt(connection, state, [{ type: 'text', text: '/compact' }], stream, token, {
+				kind: 'native-compact',
+				render: false,
+				shape: { messageChars: '/compact'.length, manualChars: 0, attachments: 0 }
+			});
+			if (token.isCancellationRequested || run.result.stopReason === 'cancelled') {
+				return false;
 			}
 		} catch (error) {
-			this.log.warn(`[${this.agent.label}] could not read the Nova IDE manual: ${error instanceof Error ? error.message : String(error)}`);
+			this.log.warn(`[${this.agent.label}] native compact failed: ${error instanceof Error ? error.message : String(error)}`);
+			stream.markdown(vscode.l10n.t('_Could not compact the conversation, so it goes on as it was._') + '\n\n');
+			return false;
 		}
-		return FALLBACK_IDE_MANUAL;
+		state.manualSent = false;
+		state.conversation.recordCompact();
+		stream.markdown(vscode.l10n.t('_Conversation compacted by {0} (the context was {1} tokens)._', this.agent.label, contextBefore === undefined ? vscode.l10n.t('n/a') : formatTokenCount(contextBefore, vscode.env.language)) + '\n\n');
+		return true;
 	}
 
-	private async applyOptions(connection: AcpConnection, state: SessionState, inputState: vscode.ChatSessionInputState): Promise<void> {
+	/** Keeps the summary for the user (extension storage, newest {@link KEPT_SUMMARIES}); never written to the user's folders. */
+	private async saveSummary(summary: string, contextBefore: number | undefined): Promise<vscode.Uri | undefined> {
+		try {
+			const folder = vscode.Uri.joinPath(this.storage, 'compact-summaries');
+			await vscode.workspace.fs.createDirectory(folder);
+			const now = new Date();
+			const file = vscode.Uri.joinPath(folder, `${now.toISOString().replace(/[:.]/g, '-')}-${this.agent.type}.md`);
+			await vscode.workspace.fs.writeFile(file, new TextEncoder().encode(summaryDocument({ provider: this.agent.label, date: now, contextBefore, summary })));
+			const files = (await vscode.workspace.fs.readDirectory(folder)).map(([name]) => name).filter(name => name.endsWith('.md')).sort();
+			for (const name of files.slice(0, Math.max(0, files.length - KEPT_SUMMARIES))) {
+				await vscode.workspace.fs.delete(vscode.Uri.joinPath(folder, name));
+			}
+			return file;
+		} catch (error) {
+			this.log.warn(`[${this.agent.label}] could not save the compact summary: ${error instanceof Error ? error.message : String(error)}`);
+			return undefined;
+		}
+	}
+
+	/**
+	 * The Nova IDE manual for the first prompt, in the configured mode: the short quick rules
+	 * (default), the whole SKILL.md of nova-browser-bridge, or nothing. Falls back to a short
+	 * built-in summary if nova-browser-bridge cannot provide it.
+	 */
+	private async readIdeManual(): Promise<string | undefined> {
+		const config = vscode.workspace.getConfiguration('nova.agents');
+		const mode = config.get<ManualMode>('manualMode', 'compact');
+		if (!config.get<boolean>('injectIdeManual', true) || mode === 'off') {
+			return undefined;
+		}
+		let manual: string | undefined;
+		try {
+			// nova-browser-bridge owns the manual and knows how to cut its compact part.
+			manual = await vscode.commands.executeCommand<string | undefined>('novaBrowserBridge.ideManual', mode);
+		} catch (error) {
+			this.log.warn(`[${this.agent.label}] could not get the Nova IDE manual: ${error instanceof Error ? error.message : String(error)}`);
+		}
+		manual ||= FALLBACK_IDE_MANUAL;
+		this.log.info(`[${this.agent.label}] sending the Nova IDE manual (${mode}, ${manual.length} characters) with the first prompt`);
+		return manual;
+	}
+
+	/** Sends the picker choices that changed to the agent; returns "old → new" when the model changed. */
+	private async applyOptions(connection: AcpConnection, state: SessionState, inputState: vscode.ChatSessionInputState): Promise<string | undefined> {
+		let modelChange: string | undefined;
 		for (const group of inputState.groups) {
 			const value = group.selected?.id;
-			if (!value || state.appliedOptions.get(group.id) === value) {
+			const previous = state.appliedOptions.get(group.id);
+			if (!value || previous === value) {
 				continue;
 			}
 			const current = this.configOptions?.find(o => o.id === group.id)?.currentValue;
@@ -414,26 +760,50 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				state.appliedOptions.set(group.id, value);
 				continue;
 			}
-			if (group.id === LEGACY_MODEL_ID) {
-				await connection.request('session/set_model', { sessionId: state.acpSessionId, modelId: value });
-			} else if (group.id === LEGACY_MODE_ID) {
-				await connection.request('session/set_mode', { sessionId: state.acpSessionId, modeId: value });
-			} else {
-				try {
-					await connection.request('session/set_config_option', { sessionId: state.acpSessionId, configId: group.id, value });
-				} catch (error) {
-					// NOVA: switching the model can drop an option (Claude Haiku has no "effort"), but the picker
-					// still holds the old choice. The agent then answers "Unknown config option", which is not a failure.
-					const message = error instanceof Error ? error.message : String(error);
-					const details = (error as { data?: { details?: string } } | undefined)?.data?.details ?? '';
-					if (!/unknown config option/i.test(`${message} ${details}`)) {
-						throw error;
-					}
-					this.log.info(`[${this.agent.label}] the agent has no "${group.id}" option for this model; skipping it`);
-				}
+			this.log.info(`[${this.agent.label}] session ${state.acpSessionId}: option "${group.id}" ${previous ?? '(agent default)'} → ${value}`);
+			await this.setOption(connection, state.acpSessionId!, group.id, value);
+			if (previous !== undefined && this.isModelOption(group.id)) {
+				const name = (id: string) => group.items.find(item => item.id === id)?.name ?? id;
+				modelChange = `${name(previous)} → ${name(value)}`;
 			}
 			state.appliedOptions.set(group.id, value);
 		}
+		return modelChange;
+	}
+
+	/** Gives a new agent session the options the tab ran with (after a Nova compact). */
+	private async restoreOptions(connection: AcpConnection, acpSessionId: string, applied: ReadonlyMap<string, string>): Promise<void> {
+		for (const [id, value] of applied) {
+			await this.setOption(connection, acpSessionId, id, value);
+		}
+	}
+
+	private async setOption(connection: AcpConnection, acpSessionId: string, id: string, value: string): Promise<void> {
+		if (id === LEGACY_MODEL_ID) {
+			await connection.request('session/set_model', { sessionId: acpSessionId, modelId: value });
+		} else if (id === LEGACY_MODE_ID) {
+			await connection.request('session/set_mode', { sessionId: acpSessionId, modeId: value });
+		} else {
+			try {
+				await connection.request('session/set_config_option', { sessionId: acpSessionId, configId: id, value });
+			} catch (error) {
+				// NOVA: switching the model can drop an option (Claude Haiku has no "effort"), but the picker
+				// still holds the old choice. The agent then answers "Unknown config option", which is not a failure.
+				const message = error instanceof Error ? error.message : String(error);
+				const details = (error as { data?: { details?: string } } | undefined)?.data?.details ?? '';
+				if (!/unknown config option/i.test(`${message} ${details}`)) {
+					throw error;
+				}
+				this.log.info(`[${this.agent.label}] the agent has no "${id}" option for this model; skipping it`);
+			}
+		}
+	}
+
+	private isModelOption(id: string): boolean {
+		if (id === LEGACY_MODEL_ID || id === 'model') {
+			return true;
+		}
+		return this.configOptions?.find(o => o.id === id)?.category === 'model';
 	}
 
 	private renderUpdate(update: AcpSessionUpdate, stream: vscode.ChatResponseStream, toolCalls: Map<string, { title: string; kind?: string }>, editedFiles: Set<string>, lastMessage: { id: string | undefined }, onThinking: () => void): void {
@@ -574,6 +944,8 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		for (const state of this.sessions.values()) {
 			state.acpSessionId = undefined;
 			state.appliedOptions.clear();
+			state.manualSent = false;
+			state.conversation.resetContext();
 		}
 	}
 
@@ -754,17 +1126,24 @@ function localizedOptionName(id: string, fallback: string): string {
 	}
 }
 
+function readToolProfile(): ToolProfile {
+	const profile = vscode.workspace.getConfiguration('nova.agents').get<string>('toolProfile', 'full');
+	return profile === 'code' || profile === 'browser' ? profile : 'full';
+}
+
 /**
  * Hands the Nova browser MCP server (from nova-browser-bridge's discovery file) to the agent,
- * so it can see and drive the integrated browser.
+ * so it can see and drive the integrated browser. The profile picks the endpoint: /mcp keeps
+ * every tool, /mcp/code and /mcp/browser list fewer (each tool description costs context on
+ * every model call).
  */
-function readNovaBrowserMcpServers(): unknown[] {
+function readNovaBrowserMcpServers(toolProfile: ToolProfile): unknown[] {
 	try {
 		const bridge = JSON.parse(fs.readFileSync(path.join(os.homedir(), '.nova-ide', 'bridge.json'), 'utf8')) as { url?: string; token?: string };
 		if (!bridge.url || !bridge.token) {
 			return [];
 		}
-		const mcpUrl = bridge.url.replace(/\/v1\/?$/, '/mcp');
+		const mcpUrl = bridge.url.replace(/\/v1\/?$/, toolProfile === 'full' ? '/mcp' : `/mcp/${toolProfile}`);
 		return [{ type: 'http', name: 'nova-browser', url: mcpUrl, headers: [{ name: 'Authorization', value: `Bearer ${bridge.token}` }] }];
 	} catch {
 		return [];

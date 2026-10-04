@@ -654,8 +654,10 @@ export class ExtHostChatSessions extends Disposable implements ExtHostChatSessio
 		const controllerData = this.getChatSessionItemController(getChatSessionType(sessionResource));
 		let inputState: vscode.ChatSessionInputState;
 		if (controllerData?.controller.getChatSessionInputState) {
-			const result = await controllerData.controller.getChatSessionInputState(isUntitledChatSession(sessionResource) ? undefined : sessionResource, {
-				previousInputState: this._createInputStateFromOptions(controllerData.optionGroups ?? [], context.initialSessionOptions),
+			// NOVA: same as getInputStateForSession: no stored options for a started session means no previous state.
+			const started = !isUntitledChatSession(sessionResource);
+			const result = await controllerData.controller.getChatSessionInputState(started ? sessionResource : undefined, {
+				previousInputState: started && !context.initialSessionOptions?.length ? undefined : this._createInputStateFromOptions(controllerData.optionGroups ?? [], context.initialSessionOptions),
 			}, token);
 			if (result) {
 				inputState = result;
@@ -954,9 +956,12 @@ export class ExtHostChatSessions extends Disposable implements ExtHostChatSessio
 		const controllerData = sessionType ? this.getChatSessionItemController(sessionType) : undefined;
 		const resolvedResource = sessionResource && !isUntitledChatSession(sessionResource) ? sessionResource : undefined;
 		if (controllerData?.controller.getChatSessionInputState) {
+			// NOVA: a started session without stored options (the chat lost them, e.g. after switching chat tabs) gets no previous
+			// state. The type-wide groups would hand it another tab's or the agent's default selection (a different model).
+			const previousInputState = resolvedResource && !initialSessionOptions?.length ? undefined : this._createInputStateFromOptions(controllerData.optionGroups ?? [], initialSessionOptions);
 			const result = await controllerData.controller.getChatSessionInputState(
 				resolvedResource,
-				{ previousInputState: this._createInputStateFromOptions(controllerData.optionGroups ?? [], initialSessionOptions) },
+				{ previousInputState },
 				token,
 			);
 			if (result) {

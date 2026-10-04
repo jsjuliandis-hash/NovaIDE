@@ -10,34 +10,16 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import * as z from 'zod';
 import { markActiveEditorOpenedByAgent } from '../agentTabs';
+import { selectManualSection } from './manual';
 import { registerUiTools } from './uiTools';
 
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.jpe', '.gif', '.webp', '.bmp', '.ico', '.avif', '.svg']);
 const IMAGE_VIEWER_ID = 'imagePreview.previewEditor';
 
-/** Short text handed to MCP clients that show server instructions in their system prompt. */
-export const NOVA_IDE_MCP_INSTRUCTIONS = [
-	'These tools control Nova IDE, the editor the user is looking at.',
-	'To show a file or an IMAGE to the user, call ide_open_file (images open in the built-in image viewer).',
-	'Never use start/open/xdg-open or a browser with file:// for that.',
-	'Use ide_show_diff for changes, browser_* for web pages, and call ide_manual for the full guide.',
-	'To act on the IDE itself use ide_ui_snapshot, ide_ui_click, ide_ui_type, ide_ui_key, ide_ui_screenshot and ide_run_command; to run commands use ide_terminal_run.',
-].join(' ');
-
 /** Reads the Nova IDE manual (SKILL.md) that ships inside this extension. */
 export function readNovaIdeManual(): string {
 	const extensionPath = vscode.extensions.getExtension('nova-ide.nova-browser-bridge')?.extensionPath ?? path.join(__dirname, '..', '..');
 	return fs.readFileSync(path.join(extensionPath, 'media', 'nova-ide', 'SKILL.md'), 'utf8');
-}
-
-/** Returns the manual, or just the `##` section whose heading contains `topic`. */
-export function selectManualSection(manual: string, topic: string | undefined): string {
-	const wanted = topic?.trim().toLowerCase();
-	if (!wanted) {
-		return manual;
-	}
-	const section = manual.split(/^(?=## )/m).find(part => part.startsWith('## ') && part.split('\n', 1)[0].toLowerCase().includes(wanted));
-	return section?.trim() ?? manual;
 }
 
 /** The viewer a file was opened with, so tool results can tell the agent what the user now sees. */
@@ -107,8 +89,8 @@ export function registerIdeTools(server: McpServer): void {
 	server.registerTool(
 		'ide_manual',
 		{
-			description: 'Read the Nova IDE manual: how to show files and images, use the integrated browser and terminals, and work with the Chat panel. Pass a topic (for example "browser") to get just that section.',
-			inputSchema: { topic: z.string().optional().describe('Part of a section heading, for example "Integrated Browser".') },
+			description: 'Read the Nova IDE manual: how to show files and images, use the integrated browser and terminals, and work with the Chat panel. Pass a topic to get just that section (much shorter than the whole manual).',
+			inputSchema: { topic: z.string().optional().describe('browser, ide, chat, terminal, files, or part of a section heading.') },
 		},
 		async ({ topic }) => textResult(selectManualSection(readNovaIdeManual(), topic)),
 	);

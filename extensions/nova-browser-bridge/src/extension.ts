@@ -13,6 +13,9 @@ import { DevServerManager, type IDevServerStatus } from './devServer/devServerMa
 import { NovaBrowser } from './novaBrowser';
 import { startCdpServer } from './server/cdpServer';
 import { startBridgeServer, type INovaBridgeServer } from './server/httpServer';
+import { readNovaIdeManual } from './server/ideTools';
+import { manualForMode, type ManualMode } from './server/manual';
+import type { McpToolCallRecord } from './server/mcp';
 import { generateToken, removeBridgeFile, writeBridgeFile } from './server/security';
 
 /** Result file written by {@link runSelfTest}, read by external automation
@@ -35,11 +38,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	const devServerManager = new DevServerManager(novaBrowser);
 	context.subscriptions.push(devServerManager);
 
+	const log = vscode.window.createOutputChannel('Nova Browser Bridge', { log: true });
+	context.subscriptions.push(log);
+
 	const token = generateToken();
 	const preferredPort = vscode.workspace.getConfiguration('nova.browserBridge').get<number>('port', 47800);
 	const onAgentRequest = new vscode.EventEmitter<void>();
 	context.subscriptions.push(onAgentRequest);
-	const bridge = await startBridgeServer(novaBrowser, devServerManager, token, preferredPort, () => onAgentRequest.fire());
+	const bridge = await startBridgeServer(novaBrowser, devServerManager, token, preferredPort, () => onAgentRequest.fire(), record => log.info(describeToolCall(record)));
 	context.subscriptions.push({ dispose: () => void bridge.close() });
 
 	const preferredCdpPort = vscode.workspace.getConfiguration('nova.browserBridge').get<number>('cdpPort', 47801);
@@ -70,6 +76,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.devServer.start', () => devServerManager.autoStart()));
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.devServer.stop', () => devServerManager.stop()));
 	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.devServer.restart', () => devServerManager.restart()));
+	// Internal (not in the palette): nova-agent-bridge asks for the manual it hands to agents, so the compact part is parsed in one place.
+	context.subscriptions.push(vscode.commands.registerCommand('novaBrowserBridge.ideManual', (mode: ManualMode) => manualForMode(readNovaIdeManual(), mode)));
 
 	if (process.env.NOVA_BROWSER_SELFTEST_ON_STARTUP === '1') {
 		void runSelfTest(novaBrowser);
@@ -78,6 +86,21 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 	if (process.env.NOVA_BROWSER_DEVSERVER_AUTOSTART !== '0') {
 		void devServerManager.autoStart();
 	}
+}
+
+/** One log line per MCP tool call: how long it took and how much it handed back (sizes, never the content). */
+function describeToolCall(record: McpToolCallRecord): string {
+	const parts = [`${record.durationMs} ms`, `${record.textChars} chars`];
+	if (record.images) {
+		parts.push(`${record.images} image(s), ${Math.round(record.imageBytes / 1024)} KB`);
+	}
+	if (record.truncated) {
+		parts.push('partial');
+	}
+	if (record.threw || record.isError) {
+		parts.push(record.threw ? 'threw' : 'error');
+	}
+	return `[mcp:${record.profile}] ${record.tool}: ${parts.join(', ')}`;
 }
 
 /**
