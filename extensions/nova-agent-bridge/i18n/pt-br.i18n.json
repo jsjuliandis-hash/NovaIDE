@@ -54,7 +54,8 @@
 			"configuration.autoCompact.providers": "Agentes que podem ser compactados automaticamente. Vazio significa todos.",
 			"configuration.autoCompact.mode": "Como o compact automático é feito.",
 			"configuration.autoCompact.mode.nova": "Compact da Nova: o agente escreve um resumo estruturado (pedido, arquivos, fatos importantes, pendências) e a conversa continua numa sessão nova do agente que começa por ele. Funciona igual em todos os agentes.",
-			"configuration.autoCompact.mode.native": "O /compact do próprio agente (Claude Code, Codex). O manual é reenviado depois."
+			"configuration.autoCompact.mode.native": "O /compact do próprio agente (Claude Code, Codex). O manual é reenviado depois.",
+			"command.resumeSaved": "Retomar Conversa Salva"
 		},
 		"bundle": {
 			"The agent process exited (code {0}).": "O processo do agente foi encerrado (código {0}).",
@@ -96,8 +97,6 @@
 			"_The last compact already left {0} tokens of context, close to the auto compact limit, so compacting again would save little. Start a new tab to reduce it._": "_O último compact já deixou {0} tokens de contexto, perto do limite do compact automático, então compactar de novo economizaria pouco. Abra uma aba nova para reduzir._",
 			"_There is nothing to summarize yet in this conversation._": "_Ainda não há nada para resumir nesta conversa._",
 			"Summarizing the conversation to go on in a new {0} session…": "Resumindo a conversa para continuar numa sessão nova do {0}…",
-			"_Could not summarize the conversation, so it goes on in the same session._": "_Não foi possível resumir a conversa; ela continua na mesma sessão._",
-			"_The agent did not return a usable summary, so the conversation goes on in the same session._": "_O agente não devolveu um resumo utilizável; a conversa continua na mesma sessão._",
 			"_Could not start a new {0} session, so the conversation goes on in the same one._": "_Não foi possível iniciar uma sessão nova do {0}; a conversa continua na mesma._",
 			"_Conversation summarized in {0} characters (≈ {1} tokens) in place of {2} tokens of context. The next message goes to a new {3} session that starts from the summary._": "_Conversa resumida em {0} caracteres (≈ {1} tokens) no lugar de {2} tokens de contexto. A próxima mensagem vai para uma sessão nova do {3} que começa pelo resumo._",
 			"View the summary": "Ver o resumo",
@@ -122,7 +121,22 @@
 			"Fetched {0}": "Buscou {0}",
 			"Thinking": "Pensando",
 			"Using {0}": "Usando {0}",
-			"Used {0}": "Usou {0}"
+			"Used {0}": "Usou {0}",
+			"_Could not summarize the conversation, so {0}._": "_Não foi possível resumir a conversa; {0}._",
+			"_The agent did not return a usable summary, so {0}._": "_O agente não devolveu um resumo utilizável; {0}._",
+			"the conversation goes on in the same session": "a conversa continua na mesma sessão",
+			"the chat stays as it is": "o chat continua como está",
+			"Summarizing and saving the conversation…": "Resumindo e salvando a conversa…",
+			"_Could not save the summary, so the chat stays as it is._": "_Não foi possível salvar o resumo; o chat continua como está._",
+			"_Saved as #{0} \"{1}\". The chat is cleared now, and your next message starts from the summary._": "_Salvo como #{0} \"{1}\". O chat foi limpo e a sua próxima mensagem começa pelo resumo._",
+			"Conversation saved as #{0} \"{1}\". Run \"Nova: Resume Saved Conversation\" to go back to it.": "Conversa salva como #{0} \"{1}\". Use \"Nova: Retomar Conversa Salva\" para voltar a ela.",
+			"Save a summary of the conversation, clear the chat and go on from the summary (Nova save) — optional focus": "Salva um resumo da conversa, limpa o chat e continua a partir do resumo (salvar da Nova) — foco opcional",
+			"There are no saved conversations yet. Use the Nova save button under an answer to save one.": "Ainda não há conversas salvas. Use o botão de salvar da Nova abaixo de uma resposta para salvar uma.",
+			"Resume Saved Conversation": "Retomar Conversa Salva",
+			"Type a code, a title or an agent to filter": "Digite um código, um título ou um agente para filtrar",
+			"Saved conversation #{0} \"{1}\" loaded: your first message sends it to {2} along with it.": "Conversa salva #{0} \"{1}\" carregada: a sua primeira mensagem a envia ao {2} junto com o texto.",
+			"_Summary #{0} \"{1}\" is now in the context of this conversation. It goes to {2} together with your first message._": "_O resumo #{0} \"{1}\" está agora inserido no contexto desta conversa. Ele vai para o {2} junto com a sua primeira mensagem._",
+			"_No saved summary is waiting for this conversation._": "_Nenhum resumo salvo está esperando nesta conversa._"
 		}
 	}
 }

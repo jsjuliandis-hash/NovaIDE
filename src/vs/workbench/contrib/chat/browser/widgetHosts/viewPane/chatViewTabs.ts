@@ -797,15 +797,15 @@ registerAction2(class extends Action2 {
 	}
 });
 
-/** The chat command of nova-agent-bridge that summarizes the conversation and goes on in a new agent session. */
-const NOVA_COMPACT_COMMAND = '/nova-compact';
+/** The chat command of nova-agent-bridge that saves a titled summary, clears the chat and goes on from the summary. */
+const NOVA_SAVE_COMMAND = '/nova-save';
 
-// NOVA: a button under each answer of a Nova agent (next to Copy) that runs /nova-compact in that answer's chat.
+// NOVA: a button under each answer of a Nova agent (next to Copy) that runs /nova-save in that answer's chat.
 registerAction2(class extends Action2 {
 	constructor() {
 		super({
 			id: 'workbench.action.chat.nova.compact',
-			title: localize2('nova.chat.compact', "Summarize Conversation (Nova Compact)"),
+			title: localize2('nova.chat.compact', "Save and Clear Conversation (Nova Save)"),
 			category: localize2('nova.chatTabs.category', "Chat"),
 			icon: Codicon.foldVertical,
 			f1: false,
@@ -822,6 +822,23 @@ registerAction2(class extends Action2 {
 		const chatWidgetService = accessor.get(IChatWidgetService);
 		const item = args[0];
 		const widget = isResponseVM(item) ? chatWidgetService.getWidgetBySessionResource(item.sessionResource) : chatWidgetService.lastFocusedWidget;
-		await widget?.acceptInput(NOVA_COMPACT_COMMAND);
+		await widget?.acceptInput(NOVA_SAVE_COMMAND);
+	}
+});
+
+// NOVA: lets nova-agent-bridge submit a message in the chat that has the focus (used to show which saved summary a new chat starts from).
+registerAction2(class extends Action2 {
+	constructor() {
+		super({
+			id: 'workbench.action.chat.nova.sendInput',
+			title: localize2('nova.chat.sendInput', "Send Message to the Focused Chat"),
+			category: localize2('nova.chatTabs.category', "Chat"),
+			f1: false,
+		});
+	}
+	async run(accessor: ServicesAccessor, text?: string): Promise<void> {
+		if (typeof text === 'string' && text) {
+			await accessor.get(IChatWidgetService).lastFocusedWidget?.acceptInput(text);
+		}
 	}
 });

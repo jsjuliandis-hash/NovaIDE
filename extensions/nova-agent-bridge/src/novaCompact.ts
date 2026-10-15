@@ -9,6 +9,12 @@
 /** The chat command that runs a Nova compact by hand; text after it says what to focus on. */
 export const NOVA_COMPACT_COMMAND = 'nova-compact';
 
+/** The chat command of the button under each answer: summarize, clear the chat and go on from the saved summary. */
+export const NOVA_SAVE_COMMAND = 'nova-save';
+
+/** Sent by Nova IDE itself to a new chat that starts from a saved summary; answered without calling the model. */
+export const NOVA_LOADED_COMMAND = 'nova-loaded';
+
 export const DEFAULT_SUMMARY_CHARS = 6000;
 export const MIN_SUMMARY_CHARS = 1500;
 export const MAX_SUMMARY_CHARS = 20000;
@@ -18,6 +24,8 @@ const MIN_USEFUL_SUMMARY = 200;
 
 export type CompactCommand =
 	| { readonly kind: 'nova'; readonly focus: string }
+	| { readonly kind: 'save'; readonly focus: string }
+	| { readonly kind: 'loaded' }
 	| { readonly kind: 'native' };
 
 /** `/nova-compact [focus]` runs the Nova compact; `/compact [...]` is the agent's own. */
@@ -28,6 +36,12 @@ export function parseCompactCommand(text: string): CompactCommand | undefined {
 	}
 	if (match.groups.name === NOVA_COMPACT_COMMAND) {
 		return { kind: 'nova', focus: (match.groups.rest ?? '').trim() };
+	}
+	if (match.groups.name === NOVA_SAVE_COMMAND) {
+		return { kind: 'save', focus: (match.groups.rest ?? '').trim() };
+	}
+	if (match.groups.name === NOVA_LOADED_COMMAND) {
+		return { kind: 'loaded' };
 	}
 	if (match.groups.name === 'compact') {
 		return { kind: 'native' };
@@ -50,6 +64,7 @@ export function buildSummaryRequest(maxChars: number, focus: string): string {
 		'',
 		'Rules:',
 		`- Reply with the summary only, written in the language the user writes in, in at most ${maxChars} characters.`,
+		'- The first line is `TITLE: ` followed by a title of at most 60 characters that names the subject of this conversation (no quotes, no date); the template starts on the next line.',
 		'- Do not call tools and do not read files: use only what is already in this conversation.',
 		'- Never invent anything. If something is uncertain, say so.',
 		'- Copy names, paths, values, commands and error messages literally; they are what a new session cannot guess.',
@@ -75,6 +90,32 @@ export function buildSummaryRequest(maxChars: number, focus: string): string {
 	].join('\n');
 }
 
+const MAX_TITLE_CHARS = 60;
+
+/** Splits the `TITLE: ...` first line the summary request asks for from the summary. The title is undefined when the agent left it out. */
+export function splitTitle(text: string): { readonly title: string | undefined; readonly body: string } {
+	const match = /^\s*(?:#+\s*)?\**TITLE:\**\s*(?<title>[^\n]*)\n?(?<body>[\s\S]*)$/i.exec(text);
+	if (!match?.groups) {
+		return { title: undefined, body: text };
+	}
+	return { title: cleanTitle(match.groups.title), body: match.groups.body };
+}
+
+/** One line, no markup or quotes, at most 60 characters. Undefined when nothing is left. */
+export function cleanTitle(text: string | undefined): string | undefined {
+	const title = (text ?? '').replace(/[`*_#"“”]/g, '').replace(/\s+/g, ' ').trim();
+	if (!title) {
+		return undefined;
+	}
+	return title.length > MAX_TITLE_CHARS ? `${title.slice(0, MAX_TITLE_CHARS - 1).trimEnd()}…` : title;
+}
+
+/** The title to save: the one the agent wrote, else the first line of "User request", else a generic one. */
+export function chooseTitle(title: string | undefined, summary: string): string {
+	const request = /^##\s*User request\s*\n+(?<line>[^\n]+)/im.exec(summary)?.groups?.line;
+	return cleanTitle(title) ?? cleanTitle(request) ?? 'Conversa sem título';
+}
+
 /** Cleans the agent's answer: trims it and removes a code fence around the whole summary. Undefined when unusable. */
 export function cleanSummary(text: string): string | undefined {
 	let summary = text.trim();
@@ -96,15 +137,69 @@ export function wrapSummary(summary: string): string {
 	].join('\n');
 }
 
-/** The summary saved for the user, in the shape of their /salve summaries. */
-export function summaryDocument(input: { readonly provider: string; readonly date: Date; readonly contextBefore: number | undefined; readonly summary: string }): string {
+/** The summary saved for the user: the file the "Resume Saved Conversation" command lists and loads. The code (1, 2, 3…) indexes it. */
+export function summaryDocument(input: { readonly options?: Readonly<Record<string, string>>; readonly code: number; readonly title: string; readonly agentType: string; readonly provider: string; readonly date: Date; readonly contextBefore: number | undefined; readonly summary: string }): string {
 	return [
-		`# Nova compact — ${input.provider}`,
+		`# ${input.title}`,
 		'',
-		`**Data:** ${input.date.toISOString().slice(0, 16).replace('T', ' ')}`,
+		`**Código:** ${input.code}`,
+		`**Agente:** ${input.provider}`,
+		`**Tipo:** ${input.agentType}`,
+		`**Data:** ${input.date.toISOString()}`,
 		`**Contexto antes:** ${input.contextBefore ?? 'n/d'} tokens`,
+		`**Opções:** ${JSON.stringify(input.options ?? {})}`,
+		'',
+		'---',
 		'',
 		input.summary,
 		'',
 	].join('\n');
+}
+
+export interface SavedSummary {
+	readonly code: number;
+	readonly title: string;
+	readonly agentType: string;
+	readonly provider: string;
+	readonly date: Date;
+	/** The model, mode and effort the saved conversation ran with (ACP option id → value); empty for older files. */
+	readonly options: Readonly<Record<string, string>>;
+	readonly summary: string;
+}
+
+/** Reads a file written by {@link summaryDocument}. Undefined for any other file (including the older format without a code). */
+export function parseSummaryDocument(text: string): SavedSummary | undefined {
+	const separator = text.indexOf('\n---\n');
+	if (separator < 0) {
+		return undefined;
+	}
+	const head = text.slice(0, separator);
+	const field = (name: string) => new RegExp(`^\\*\\*${name}:\\*\\*\\s*(?<value>.+)$`, 'm').exec(head)?.groups?.value.trim();
+	const title = /^#\s+(?<value>.+)$/m.exec(head)?.groups?.value.trim();
+	const code = Number(field('Código'));
+	const provider = field('Agente');
+	const agentType = field('Tipo');
+	const date = new Date(field('Data') ?? '');
+	const summary = text.slice(separator + 5).trim();
+	const options = parseOptions(field('Opções'));
+	if (!title || !Number.isInteger(code) || code < 1 || !provider || !agentType || Number.isNaN(date.getTime()) || !summary) {
+		return undefined;
+	}
+	return { code, title, agentType, provider, date, options, summary };
+}
+
+/** The `Opções` line: a JSON object of strings; anything else reads as no options. */
+function parseOptions(text: string | undefined): Record<string, string> {
+	try {
+		const value: unknown = JSON.parse(text ?? '{}');
+		return value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string')) : {};
+	} catch {
+		return {};
+	}
+}
+
+/** A file name for a saved summary: the date, the code and the title in ASCII (so it sorts by date and is valid everywhere). */
+export function summaryFileName(code: number, title: string, date: Date): string {
+	const slug = title.normalize('NFD').replace(new RegExp(`[${String.fromCharCode(0x300)}-${String.fromCharCode(0x36f)}]`, 'g'), '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+	return `${date.toISOString().replace(/[:.]/g, '-')}-${code}-${slug || 'conversa'}.md`;
 }

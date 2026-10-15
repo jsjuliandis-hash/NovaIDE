@@ -9,6 +9,42 @@
 	padding: 0 2px 4px;
 }
 
+/* The buttons on the left (Integrated Browser, saved conversations); the group pushes the donation button to the right. */
+.interactive-session .nova-left-buttons {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+	margin-right: auto;
+}
+
+/* Saved conversations: same size as the browser button. */
+.interactive-session .nova-saved-button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 22px;
+	height: 22px;
+	border-radius: 50%;
+	cursor: pointer;
+	text-decoration: none;
+	color: var(--vscode-charts-blue, #4fa8ff);
+	transition: background-color 0.15s ease, filter 0.15s ease;
+}
+
+.interactive-session .nova-saved-button .codicon {
+	font-size: 16px;
+}
+
+.interactive-session .nova-saved-button:hover {
+	background-color: var(--vscode-toolbar-hoverBackground);
+	filter: brightness(1.2) drop-shadow(0 0 3px rgba(79, 168, 255, 0.5));
+}
+
+.interactive-session .nova-saved-button:focus-visible {
+	outline: 1px solid var(--vscode-focusBorder);
+	outline-offset: 1px;
+}
+
 /* Integrated Browser: the logo's yellow bolt in a ring, the size of the input toolbar buttons, pushed to the left. */
 .interactive-session .nova-browser-button {
 	display: inline-flex;
@@ -16,7 +52,6 @@
 	justify-content: center;
 	width: 22px;
 	height: 22px;
-	margin-right: auto;
 	border-radius: 50%;
 	cursor: pointer;
 	text-decoration: none;

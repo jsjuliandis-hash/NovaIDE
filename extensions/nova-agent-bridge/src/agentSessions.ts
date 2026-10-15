@@ -14,8 +14,9 @@ import { vendorIcon } from './vendors';
 import { AcpAuthMethod, AcpAvailableCommand, AcpConfigOption, AcpConnection, AcpContentBlock, AcpError, AcpNewSessionResult, AcpPermissionOption, AcpPromptResult, AcpRequestHandlers, AcpSessionUpdate } from './acp';
 import { ConversationContext, decideAutoCompact, formatTokenCount, modelsUsed, requestProcessedTokens, UsageSemantics } from './contextAccounting';
 import { AcpToolContentItem, diffText, inlineCode, shortText, toolOutputText } from './activityLog';
-import { buildSummaryRequest, clampSummaryChars, cleanSummary, DEFAULT_SUMMARY_CHARS, NOVA_COMPACT_COMMAND, parseCompactCommand, summaryDocument, wrapSummary } from './novaCompact';
+import { buildSummaryRequest, chooseTitle, clampSummaryChars, cleanSummary, DEFAULT_SUMMARY_CHARS, NOVA_COMPACT_COMMAND, NOVA_LOADED_COMMAND, NOVA_SAVE_COMMAND, parseCompactCommand, splitTitle, wrapSummary } from './novaCompact';
 import { formatMetrics, RecentMetrics, RequestKind, RequestMetrics } from './requestMetrics';
+import { SummaryStore } from './summaryStore';
 
 /** How much of the Nova IDE manual an agent receives with the first prompt (nova.agents.manualMode). */
 type ManualMode = 'compact' | 'full' | 'off';
@@ -74,8 +75,8 @@ interface RunActivity {
 	planPending: number | undefined;
 }
 
-/** How many Nova compact summaries are kept on disk. */
-const KEPT_SUMMARIES = 50;
+/** How long a summary queued for "the next new chat" of an agent waits for that chat before it is forgotten. */
+const QUEUED_SUMMARY_MINUTES = 30;
 
 /** ACP config options that become pickers in the chat input, in display order: each slot matches an ACP category or one of the known option ids. */
 const PICKER_SLOTS: readonly { readonly category: string; readonly ids: readonly string[] }[] = [
@@ -96,6 +97,18 @@ const LEGACY_MODE_ID = 'acp.mode';
 /** Environment variable an agent reads for each API key provider ACP reports in `authMethods[]._meta['api-key'].provider`. */
 const API_KEY_ENV: Record<string, string> = { openai: 'OPENAI_API_KEY', google: 'GEMINI_API_KEY', anthropic: 'ANTHROPIC_API_KEY' };
 
+/** Clears the chat that has the focus, then shows in it which saved summary the new chat starts from. */
+export async function clearChatAndAnnounceSummary(): Promise<void> {
+	await vscode.commands.executeCommand('workbench.action.chat.newChat');
+	await announceSummary();
+}
+
+/** Sends `/nova-loaded` to the focused chat; the bridge answers it without the model (see handleRequest). */
+export async function announceSummary(): Promise<void> {
+	await new Promise(resolve => setTimeout(resolve, 400));
+	await vscode.commands.executeCommand('workbench.action.chat.nova.sendInput', `/${NOVA_LOADED_COMMAND}`);
+}
+
 export class AgentSessionProvider implements vscode.ChatSessionContentProvider, vscode.Disposable {
 
 	private readonly disposables: vscode.Disposable[] = [];
@@ -115,8 +128,10 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	/** Slash commands the agent reported (`available_commands_update`); they feed the `/` completion list of the chat. */
 	private commands: readonly AcpAvailableCommand[] = [];
 	private readonly commandsChanged = new vscode.EventEmitter<void>();
+	/** A saved summary that the next new chat of this agent starts from (set by `/nova-save` and "Resume Saved Conversation"). */
+	private queuedSummary: { readonly summary: string; readonly queuedAt: number; readonly options: ReadonlyMap<string, string>; readonly code: number; readonly title: string } | undefined;
 
-	constructor(private readonly agent: AgentDefinition, private readonly secrets: vscode.SecretStorage, private readonly log: vscode.LogOutputChannel, private readonly metrics: RecentMetrics, private readonly storage: vscode.Uri) {
+	constructor(private readonly agent: AgentDefinition, private readonly secrets: vscode.SecretStorage, private readonly log: vscode.LogOutputChannel, private readonly metrics: RecentMetrics, private readonly store: SummaryStore) {
 		this.controller = vscode.chat.createChatSessionItemController(agent.type, async () => {
 			this.controller.items.replace([...this.sessions.values()].map(s => s.item));
 		});
@@ -132,7 +147,9 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			// the options it runs with, instead of falling back to the agent's default model.
 			const known = sessionResource && !context.previousInputState ? this.sessions.get(sessionResource.toString()) : undefined;
 			const restored = !!known?.acpSessionId && known.appliedOptions.size > 0;
-			const state = this.controller.createChatSessionInputState(this.buildGroups(context.previousInputState, restored ? known!.appliedOptions : undefined));
+			// NOVA: the first chat after a Nova save starts with the model, mode and effort of the tab that was saved, not the agent default.
+			const queuedOptions = !restored && !known?.acpSessionId ? this.freshQueuedSummary()?.options : undefined;
+			const state = this.controller.createChatSessionInputState(this.buildGroups(context.previousInputState, restored ? known!.appliedOptions : queuedOptions));
 			if (restored) {
 				this.restoredInputStates.add(state);
 			}
@@ -170,7 +187,15 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			source: 'builtin',
 			userInvocable: true
 		};
-		return [novaCompact, ...this.commands.filter(command => command.name !== NOVA_COMPACT_COMMAND).map((command): vscode.ChatSessionCustomizationItem => ({
+		const novaSave: vscode.ChatSessionCustomizationItem = {
+			uri: vscode.Uri.from({ scheme: 'agent-builtin', path: `/${NOVA_SAVE_COMMAND}` }),
+			type: vscode.ChatSessionCustomizationType.Prompt,
+			name: NOVA_SAVE_COMMAND,
+			description: vscode.l10n.t('Save a summary of the conversation, clear the chat and go on from the summary (Nova save) — optional focus'),
+			source: 'builtin',
+			userInvocable: true
+		};
+		return [novaCompact, novaSave, ...this.commands.filter(command => command.name !== NOVA_COMPACT_COMMAND && command.name !== NOVA_SAVE_COMMAND).map((command): vscode.ChatSessionCustomizationItem => ({
 			// `agent-builtin` marks a command without a file: the chat sends the typed `/name` to the agent as plain text.
 			uri: vscode.Uri.from({ scheme: 'agent-builtin', path: `/${command.name}` }),
 			type: vscode.ChatSessionCustomizationType.Prompt,
@@ -373,6 +398,15 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			return {};
 		}
 
+		if (parseCompactCommand(request.command ? `/${request.command} ${request.prompt}` : request.prompt)?.kind === 'loaded') {
+			// NOVA: Nova IDE sends this to the chat it just cleared; it only says which saved summary the chat starts from, so no agent or model is involved.
+			const queued = this.freshQueuedSummary();
+			stream.markdown(queued
+				? vscode.l10n.t('_Summary #{0} "{1}" is now in the context of this conversation. It goes to {2} together with your first message._', queued.code, queued.title, this.agent.label)
+				: vscode.l10n.t('_No saved summary is waiting for this conversation._'));
+			return {};
+		}
+
 		state.item.status = vscode.ChatSessionStatus.InProgress;
 		state.item.timing = { created: state.item.timing?.created ?? Date.now(), lastRequestStarted: Date.now() };
 		this.controller.items.add(state.item);
@@ -416,6 +450,15 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 				this.finish(state, vscode.ChatSessionStatus.Completed);
 				return {};
 			}
+			if (command?.kind === 'save') {
+				const saved = await this.novaSave(connection, state, stream, token, command.focus, modelChange);
+				this.finish(state, vscode.ChatSessionStatus.Completed);
+				if (saved) {
+					// NOVA: the chat clears itself after this request ends; the next message of the new chat starts from the summary.
+					setTimeout(() => void clearChatAndAnnounceSummary(), 300);
+				}
+				return {};
+			}
 			if (!command) {
 				await this.autoCompact(connection, state, stream, token);
 				if (token.isCancellationRequested) {
@@ -429,6 +472,9 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			// The agent is an external process that knows nothing about Nova IDE: hand it the manual once per session.
 			// The mode is read here, at the first prompt, so changing it never re-sends the manual in the middle of a conversation.
 			const manual = state.manualSent ? undefined : await this.readIdeManual();
+			if (!state.pendingSummary && !state.manualSent) {
+				state.pendingSummary = this.takeQueuedSummary();
+			}
 			const summary = state.pendingSummary;
 			if (summary) {
 				prompt.unshift({ type: 'text', text: wrapSummary(summary) });
@@ -617,17 +663,15 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 	}
 
 	/**
-	 * Nova compact: the agent writes a hand-off summary of the conversation (not shown in the chat), and the tab
-	 * goes on in a new agent session with the same options, whose first prompt carries the manual and the summary.
-	 * The visible chat history stays as it is. On any failure the conversation stays in the current session.
+	 * Asks the agent, in the current session, for the hand-off summary of the conversation (not shown in the chat).
+	 * Undefined when there is nothing to summarize or the agent did not return a usable summary; the user is told why.
 	 */
-	private async novaCompact(connection: AcpConnection, state: SessionState, stream: vscode.ChatResponseStream, token: vscode.CancellationToken, focus: string, modelChange: string | undefined): Promise<boolean> {
-		const contextBefore = state.conversation.lastContext;
+	private async summarize(connection: AcpConnection, state: SessionState, stream: vscode.ChatResponseStream, token: vscode.CancellationToken, focus: string, modelChange: string | undefined, progress: string, failure: string): Promise<{ readonly summary: string; readonly title: string; readonly maxChars: number } | undefined> {
 		if (!state.manualSent) {
 			stream.markdown(vscode.l10n.t('_There is nothing to summarize yet in this conversation._') + '\n\n');
-			return false;
+			return undefined;
 		}
-		stream.progress(vscode.l10n.t('Summarizing the conversation to go on in a new {0} session…', this.agent.label));
+		stream.progress(progress);
 		const maxChars = clampSummaryChars(vscode.workspace.getConfiguration('nova.agents.compact').get<number>('maxSummaryChars', DEFAULT_SUMMARY_CHARS));
 		const request = buildSummaryRequest(maxChars, focus);
 		let run: PromptRun;
@@ -640,18 +684,35 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 			});
 		} catch (error) {
 			this.log.warn(`[${this.agent.label}] nova compact failed: ${error instanceof Error ? error.message : String(error)}`);
-			stream.markdown(vscode.l10n.t('_Could not summarize the conversation, so it goes on in the same session._') + '\n\n');
-			return false;
+			stream.markdown(vscode.l10n.t('_Could not summarize the conversation, so {0}._', failure) + '\n\n');
+			return undefined;
 		}
 		if (token.isCancellationRequested || run.result.stopReason === 'cancelled') {
-			return false;
+			return undefined;
 		}
-		const summary = cleanSummary(run.text);
+		const { title, body } = splitTitle(run.text);
+		const summary = cleanSummary(body);
 		if (!summary) {
 			this.log.warn(`[${this.agent.label}] nova compact: the agent returned ${run.text.length} characters, not a usable summary`);
-			stream.markdown(vscode.l10n.t('_The agent did not return a usable summary, so the conversation goes on in the same session._') + '\n\n');
+			stream.markdown(vscode.l10n.t('_The agent did not return a usable summary, so {0}._', failure) + '\n\n');
+			return undefined;
+		}
+		return { summary, title: chooseTitle(title, summary), maxChars };
+	}
+
+	/**
+	 * Nova compact: the agent writes a hand-off summary of the conversation (not shown in the chat), and the tab
+	 * goes on in a new agent session with the same options, whose first prompt carries the manual and the summary.
+	 * The visible chat history stays as it is. On any failure the conversation stays in the current session.
+	 */
+	private async novaCompact(connection: AcpConnection, state: SessionState, stream: vscode.ChatResponseStream, token: vscode.CancellationToken, focus: string, modelChange: string | undefined): Promise<boolean> {
+		const contextBefore = state.conversation.lastContext;
+		const failure = vscode.l10n.t('the conversation goes on in the same session');
+		const summarized = await this.summarize(connection, state, stream, token, focus, modelChange, vscode.l10n.t('Summarizing the conversation to go on in a new {0} session…', this.agent.label), failure);
+		if (!summarized) {
 			return false;
 		}
+		const { summary, title, maxChars } = summarized;
 
 		let newSessionId: string;
 		try {
@@ -669,16 +730,64 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		state.conversation.recordCompact();
 		this.log.info(`[${this.agent.label}] nova compact: session ${previousSessionId} → ${newSessionId}, summary ${summary.length} characters (asked for at most ${maxChars}), context before ${contextBefore ?? 'n/a'}`);
 
-		const file = await this.saveSummary(summary, contextBefore);
+		const saved = await this.saveSummary(title, summary, contextBefore, state.appliedOptions);
 		const locale = vscode.env.language;
 		stream.markdown(vscode.l10n.t('_Conversation summarized in {0} characters (≈ {1} tokens) in place of {2} tokens of context. The next message goes to a new {3} session that starts from the summary._',
 			summary.length, formatTokenCount(Math.round(summary.length / 4), locale), contextBefore === undefined ? vscode.l10n.t('n/a') : formatTokenCount(contextBefore, locale), this.agent.label));
-		if (file) {
+		if (saved) {
 			stream.markdown(' ');
-			stream.anchor(file, vscode.l10n.t('View the summary'));
+			stream.anchor(saved.file, vscode.l10n.t('View the summary'));
 		}
 		stream.markdown('\n\n');
 		return true;
+	}
+
+	/**
+	 * Nova save (the button under each answer): the agent writes the summary with a title, which is saved; the caller then
+	 * clears the chat, and the first message of the new chat carries the summary. Nothing is switched here, so on any
+	 * failure the conversation stays as it is. The model is only used for the summary: loading it again costs no model call.
+	 */
+	private async novaSave(connection: AcpConnection, state: SessionState, stream: vscode.ChatResponseStream, token: vscode.CancellationToken, focus: string, modelChange: string | undefined): Promise<boolean> {
+		const contextBefore = state.conversation.lastContext;
+		const failure = vscode.l10n.t('the chat stays as it is');
+		const summarized = await this.summarize(connection, state, stream, token, focus, modelChange, vscode.l10n.t('Summarizing and saving the conversation…'), failure);
+		if (!summarized) {
+			return false;
+		}
+		const { summary, title } = summarized;
+		const saved = await this.saveSummary(title, summary, contextBefore, state.appliedOptions);
+		if (!saved) {
+			stream.markdown(vscode.l10n.t('_Could not save the summary, so the chat stays as it is._') + '\n\n');
+			return false;
+		}
+		this.queueSummary(summary, { code: saved.code, title }, state.appliedOptions);
+		this.log.info(`[${this.agent.label}] nova save: #${saved.code} "${title}", summary ${summary.length} characters, context before ${contextBefore ?? 'n/a'}; clearing the chat`);
+		stream.markdown(vscode.l10n.t('_Saved as #{0} "{1}". The chat is cleared now, and your next message starts from the summary._', saved.code, title) + '\n\n');
+		void vscode.window.setStatusBarMessage(vscode.l10n.t('Conversation saved as #{0} "{1}". Run "Nova: Resume Saved Conversation" to go back to it.', saved.code, title), 15000);
+		return true;
+	}
+
+	/**
+	 * The next new chat of this agent starts from this summary, sent with its first message (no model call to load it).
+	 * `options` (model, mode, effort) are what that chat's pickers start with; empty means the agent default.
+	 */
+	queueSummary(summary: string, saved: { readonly code: number; readonly title: string }, options: ReadonlyMap<string, string> = new Map()): void {
+		this.queuedSummary = { summary, queuedAt: Date.now(), options: new Map(options), code: saved.code, title: saved.title };
+	}
+
+	private freshQueuedSummary(): { readonly summary: string; readonly options: ReadonlyMap<string, string>; readonly code: number; readonly title: string } | undefined {
+		const queued = this.queuedSummary;
+		return queued && Date.now() - queued.queuedAt <= QUEUED_SUMMARY_MINUTES * 60_000 ? queued : undefined;
+	}
+
+	private takeQueuedSummary(): string | undefined {
+		const queued = this.freshQueuedSummary();
+		this.queuedSummary = undefined;
+		if (!queued) {
+			return undefined;
+		}
+		this.log.info(`[${this.agent.label}] the first message of this chat starts from a saved summary (${queued.summary.length} characters)`);
+		return queued.summary;
 	}
 
 	/** The agent's own `/compact` (auto compact in `native` mode), when the agent offers it. */
@@ -709,19 +818,10 @@ export class AgentSessionProvider implements vscode.ChatSessionContentProvider, 
 		return true;
 	}
 
-	/** Keeps the summary for the user (extension storage, newest {@link KEPT_SUMMARIES}); never written to the user's folders. */
-	private async saveSummary(summary: string, contextBefore: number | undefined): Promise<vscode.Uri | undefined> {
+	/** Keeps the summary for the user (see {@link SummaryStore}); never written to the user's folders. */
+	private async saveSummary(title: string, summary: string, contextBefore: number | undefined, options: ReadonlyMap<string, string>): Promise<{ readonly file: vscode.Uri; readonly code: number } | undefined> {
 		try {
-			const folder = vscode.Uri.joinPath(this.storage, 'compact-summaries');
-			await vscode.workspace.fs.createDirectory(folder);
-			const now = new Date();
-			const file = vscode.Uri.joinPath(folder, `${now.toISOString().replace(/[:.]/g, '-')}-${this.agent.type}.md`);
-			await vscode.workspace.fs.writeFile(file, new TextEncoder().encode(summaryDocument({ provider: this.agent.label, date: now, contextBefore, summary })));
-			const files = (await vscode.workspace.fs.readDirectory(folder)).map(([name]) => name).filter(name => name.endsWith('.md')).sort();
-			for (const name of files.slice(0, Math.max(0, files.length - KEPT_SUMMARIES))) {
-				await vscode.workspace.fs.delete(vscode.Uri.joinPath(folder, name));
-			}
-			return file;
+			return await this.store.save({ title, agentType: this.agent.type, provider: this.agent.label, contextBefore, options: Object.fromEntries(options), summary });
 		} catch (error) {
 			this.log.warn(`[${this.agent.label}] could not save the compact summary: ${error instanceof Error ? error.message : String(error)}`);
 			return undefined;

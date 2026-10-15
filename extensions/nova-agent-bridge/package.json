@@ -146,6 +146,11 @@
         "category": "Nova"
       },
       {
+        "command": "novaAgentBridge.resumeSaved",
+        "title": "%command.resumeSaved%",
+        "category": "Nova"
+      },
+      {
         "command": "novaAgentBridge.exportMetrics",
         "title": "%command.exportMetrics%",
         "category": "Nova"

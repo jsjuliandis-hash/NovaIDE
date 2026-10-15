@@ -30,7 +30,8 @@ export const novaTranslations: Readonly<Record<string, Readonly<Record<string, R
 			'nova.chatTabs.keepRunning': '&&Deixar Terminar em Segundo Plano',
 			'nova.chatTabs.stop': '&&Parar e Fechar',
 			'nova.chatTabs.newChat': 'Novo Chat',
-			'nova.chat.compact': 'Resumir a Conversa (Compact da Nova)',
+			'nova.chat.sendInput': 'Enviar Mensagem ao Chat em Foco',
+			'nova.chat.compact': 'Salvar e Limpar a Conversa (Salvar da Nova)',
 			'nova.chatTabs.local': 'Local',
 			'nova.chatTabs.new': 'Nova Aba de Chat',
 			'nova.chatTabs.needsInput': 'Aguardando você',
@@ -163,6 +164,8 @@ export const novaTranslations: Readonly<Record<string, Readonly<Record<string, R
 			'nova.donation.buttonHover': 'Apoie a Nova IDE com uma doação via Pix',
 			'nova.browserButton.label': 'Abrir o Navegador Integrado',
 			'nova.browserButton.hover': 'Abrir o Navegador Integrado',
+			'nova.savedButton.label': 'Retomar Conversa Salva',
+			'nova.savedButton.hover': 'Conversas salvas: escolha uma para continuar a partir do resumo',
 		},
 		'vs/platform/novaDonation/electron-main/novaDonationMainService': {
 			'nova.donation.title': 'Apoie a Nova IDE',

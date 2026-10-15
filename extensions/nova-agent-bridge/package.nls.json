@@ -5,6 +5,7 @@
 	"chatSessions.opencode.welcomeMessage": "Chat with OpenCode. It runs locally with your own opencode account and models.",
 	"chatSessions.opencode.inputPlaceholder": "Ask OpenCode to build, fix or explain something",
 	"command.showLog": "Nova Agents: Show Log",
+	"command.resumeSaved": "Resume Saved Conversation",
 	"configuration.title": "Nova Agents",
 	"configuration.opencode.command": "Command used to start OpenCode.",
 	"configuration.opencode.args": "Arguments passed to the OpenCode command to start its Agent Client Protocol server.",
